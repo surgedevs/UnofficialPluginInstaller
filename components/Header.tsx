@@ -20,11 +20,13 @@ const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNa
 export default function Header({
     onInstall,
     hasUpdates,
-    onLoadingChange
+    onLoadingChange,
+    onRefreshPlugins
 }: {
     onInstall: (partialPlugin: PartialPlugin) => void;
     hasUpdates?: boolean;
     onLoadingChange: (loading: boolean, text?: string) => void;
+    onRefreshPlugins?: () => void;
 }) {
     const [linkInput, setLinkInput] = useState("");
     const [isWorking, setIsWorking] = useState(false);
@@ -164,6 +166,7 @@ export default function Header({
                 const result = await Native.updateAllPlugins();
                 if (result.success) {
                     showToast(`Updated ${result.data.updated.length} plugins. Build & Inject to apply changes.`, "success");
+                    onRefreshPlugins?.();
                 } else {
                     showToast("Failed to update plugins.", "failure");
                 }

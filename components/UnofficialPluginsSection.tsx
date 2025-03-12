@@ -8,7 +8,7 @@ import { DataStore } from "@api/index";
 import { SettingsTab } from "@components/VencordSettings/shared";
 import { Margins } from "@utils/margins";
 import { PluginNative } from "@utils/types";
-import { Alerts, Button, Forms, useEffect, useState } from "@webpack/common";
+import { Alerts, Button, Forms, Toasts, useEffect, useState } from "@webpack/common";
 
 import Plugins from "~plugins";
 
@@ -136,6 +136,28 @@ export function UnofficialPluginsSection() {
         }
     };
 
+    const handleRefreshPlugins = async () => {
+        setHasUpdates(false);
+        setIsLoading(true);
+        setLoadingText("Refreshing plugins...");
+
+        // Force a refresh of the plugin list
+        const result = await Native.getPluginList();
+        if (result.success) {
+            setPartialPlugins(prevPlugins => [...prevPlugins]); // Trigger re-render
+            setIsLoading(false);
+            setLoadingText(undefined);
+        } else {
+            setIsLoading(false);
+            setLoadingText(undefined);
+            Toasts.show({
+                message: "Failed to refresh plugins",
+                type: Toasts.Type.FAILURE,
+                id: "vc-up-refresh-failed"
+            });
+        }
+    };
+
     return (
         <SettingsTab title="Unofficial Plugins">
             <div style={{ position: "relative" }}>
@@ -148,8 +170,10 @@ export function UnofficialPluginsSection() {
                             setIsLoading(loading);
                             setLoadingText(text);
                         }}
+                        onRefreshPlugins={handleRefreshPlugins}
                     />
                     <PluginList
+                        key={isLoading ? "loading" : "loaded"}
                         partialPlugins={partialPlugins}
                         onUpdateCheck={handlePluginUpdate}
                         onLoadingChange={(loading, text) => {
