@@ -9,14 +9,22 @@ import { Button, Select, Text, useState } from "@webpack/common";
 
 type DiscordBranch = "stable" | "ptb" | "canary";
 
-const BRANCH_OPTIONS = [
+interface BranchOption {
+    label: string;
+    value: DiscordBranch;
+    default?: boolean;
+}
+
+const BRANCH_OPTIONS: BranchOption[] = [
     { label: "Stable", value: "stable" },
     { label: "PTB", value: "ptb" },
-    { label: "Canary", value: "canary" }
-] as const;
+    { label: "Canary", value: "canary", default: true }
+];
 
 export function BuildConfirmationModal({ onConfirm }: { onConfirm: (branch: DiscordBranch) => void; }) {
-    const [selectedBranch, setSelectedBranch] = useState<DiscordBranch>("canary");
+    const [selectedBranch, setSelectedBranch] = useState<DiscordBranch>(
+        BRANCH_OPTIONS.find(o => o.default)?.value ?? "canary"
+    );
 
     const onButtonClick = () => {
         const alertButton: HTMLButtonElement | null = document.querySelector(
@@ -44,9 +52,12 @@ export function BuildConfirmationModal({ onConfirm }: { onConfirm: (branch: Disc
                 <Text variant="text-sm/normal">Select Discord Branch:</Text>
                 <Select
                     options={BRANCH_OPTIONS}
-                    select={v => setSelectedBranch(v.value as DiscordBranch)}
-                    isSelected={v => v.value === selectedBranch}
-                    serialize={v => v.value}
+                    placeholder="Select Discord Branch"
+                    maxVisibleItems={5}
+                    closeOnSelect={true}
+                    select={v => setSelectedBranch(v)}
+                    isSelected={v => v === selectedBranch}
+                    serialize={String}
                     className={Margins.top8}
                 />
             </div>

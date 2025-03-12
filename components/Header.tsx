@@ -4,28 +4,39 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { DataStore } from "@api/index";
 import { CodeBlock } from "@components/CodeBlock";
 import { Flex } from "@components/Flex";
 import { Margins } from "@utils/margins";
 import { showItemInFolder } from "@utils/native";
 import { PluginNative } from "@utils/types";
-import { Alerts, Button, Forms, Text, TextInput, Toasts, useState } from "@webpack/common";
+import { Alerts, Button, Forms, showToast, Text, TextInput, Toasts, useState } from "@webpack/common";
 
-import { PartialPlugin } from "../shared";
+import { PartialPlugin, PLUGINS_STORE_KEY, StoredPlugin } from "../shared";
 import { BuildConfirmationModal } from "./BuildConfirmationModal";
+import { LoadingOverlay } from "./LoadingOverlay";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 
 export default function Header({
     onInstall,
+    hasUpdates,
+    onLoadingChange
 }: {
     onInstall: (partialPlugin: PartialPlugin) => void;
+    hasUpdates?: boolean;
+    onLoadingChange: (loading: boolean, text?: string) => void;
 }) {
     const [linkInput, setLinkInput] = useState("");
     const [isWorking, setIsWorking] = useState(false);
 
+    const setLoading = (loading: boolean, text?: string) => {
+        setIsWorking(loading);
+        onLoadingChange(loading, text);
+    };
+
     const onLinkSubmit = async () => {
-        setIsWorking(true);
+        setLoading(true, "Installing plugin...");
         const result = await Native.installFromRepoLink(linkInput);
 
         if (result.success) {
@@ -35,10 +46,23 @@ export default function Header({
                 type: Toasts.Type.SUCCESS,
             });
 
-            setIsWorking(false);
+            const plugins = await DataStore.get(PLUGINS_STORE_KEY) || {};
+
+            plugins[result.data.name ?? "Unknown"] = {
+                name: result.data.name ?? "Unknown",
+                folderName: result.data.folderName ?? "Unknown",
+                source: "link",
+                repoLink: linkInput
+            };
+
+            await DataStore.set(PLUGINS_STORE_KEY, plugins);
+
+            setLoading(false);
             onInstall({
-                name: result.data ?? "Unknown",
-                description: "This plugin was just installed! Build & Inject to load additional information.",
+                name: result.data.name ?? "Unknown",
+                folderName: result.data.folderName ?? "Unknown",
+                source: "link",
+                repoLink: linkInput
             });
             return;
         }
@@ -51,7 +75,7 @@ export default function Header({
             className: "vc-up-alert-full"
         });
 
-        setIsWorking(false);
+        setLoading(false);
     };
 
     const onClickOpenSource = async () => {
@@ -60,8 +84,7 @@ export default function Header({
 
     const onClickBuildAndInject = async () => {
         const handleConfirm = async (branch: "stable" | "ptb" | "canary") => {
-            setIsWorking(true);
-
+            setLoading(true, "Building and injecting...");
             const buildResult = await Native.build();
             if (!buildResult.success) {
                 console.warn("Build resulted in an error!", buildResult.error?.object);
@@ -89,7 +112,7 @@ export default function Header({
                     className: "vc-up-alert-full"
                 });
 
-                setIsWorking(false);
+                setLoading(false);
                 return;
             }
 
@@ -109,7 +132,7 @@ export default function Header({
                     className: "vc-up-alert-full"
                 });
 
-                setIsWorking(false);
+                setLoading(false);
                 return;
             }
 
@@ -119,7 +142,7 @@ export default function Header({
                 type: Toasts.Type.SUCCESS,
             });
 
-            setIsWorking(false);
+            setLoading(false);
         };
 
         const alert = {
@@ -132,11 +155,69 @@ export default function Header({
     };
 
     const onClickUpdateAll = async () => {
-        // setIsWorking(true);
-        // const result = await Native.updateAll();
+        const alert = {
+            title: "Update All Plugins",
+            body: "Are you sure you want to update all plugins? You will need to Build & Inject after the update.",
+            confirmText: "Update",
+            cancelText: "Cancel",
+            onConfirm: async () => {
+                setLoading(true, "Updating all plugins...");
+                const result = await Native.updateAllPlugins();
+                if (result.success) {
+                    showToast(`Updated ${result.data.updated.length} plugins. Build & Inject to apply changes.`, "success");
+                } else {
+                    showToast("Failed to update plugins.", "failure");
+                }
+                setLoading(false);
+            }
+        };
+
+        Alerts.show(alert);
     };
 
-    return <div className={"vc-up-container " + Margins.bottom16}>
+    const onClickInstallFromDirectory = async () => {
+        setLoading(true, "Installing from directory...");
+        const result = await Native.installFromDirectory();
+
+        if (result.success) {
+            Toasts.show({
+                message: "Plugin installed!",
+                id: "vc-up-install-dir",
+                type: Toasts.Type.SUCCESS,
+            });
+
+            const plugin = {
+                name: result.data.name ?? "Unknown",
+                source: "directory" as const,
+                folderName: result.data.folderName ?? "Unknown"
+            };
+            const plugins: StoredPlugin[] = await DataStore.get(PLUGINS_STORE_KEY) || [];
+
+            plugins.push(plugin);
+            await DataStore.set(PLUGINS_STORE_KEY, plugins);
+
+            onInstall(plugin);
+        } else {
+            if (result.error?.message === "Plugin already exists!") {
+                showToast("Plugin already exists!", "failure");
+                setLoading(false);
+                return;
+            }
+
+            console.warn("Install from directory resulted in an error!", result.error?.object);
+
+            Alerts.show({
+                title: result.error?.message,
+                body: result.error?.stderr,
+                className: "vc-up-alert-full"
+            });
+        }
+
+        setLoading(false);
+    };
+
+    return <div className={"vc-up-container " + Margins.bottom16} style={{ position: "relative" }}>
+        {isWorking && <LoadingOverlay text={loadingText} />}
         <Forms.FormTitle>
             Unofficial Plugin Management
         </Forms.FormTitle>
@@ -159,9 +240,9 @@ export default function Header({
             <Forms.FormTitle>Actions</Forms.FormTitle>
 
             <Flex flexDirection="row" className={Margins.top16} style={{ justifyContent: "space-between" }}>
-                <Button disabled={isWorking} onClick={onClickOpenSource}>Install From Directory</Button>
+                <Button disabled={isWorking} onClick={onClickInstallFromDirectory}>Install From Directory</Button>
                 <Button disabled={isWorking} onClick={onClickOpenSource}>Open Source Folder</Button>
-                <Button disabled={isWorking} onClick={onClickUpdateAll}>Update All</Button>
+                <Button disabled={isWorking || !hasUpdates} onClick={onClickUpdateAll}>Update All</Button>
                 <Button disabled={isWorking} color={Button.Colors.RED} onClick={onClickBuildAndInject}>Build & Inject</Button>
             </Flex>
         </div>

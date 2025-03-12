@@ -1,41 +1,88 @@
 .vc-up-alert [class*="footerSeparator_"] {
-    display: none;
+  display: none;
 }
 
 .vc-up-container {
-    padding: 24px;
-    background-color: var(--background-secondary);
-    box-shadow: var(--elevation-low);
-    border-radius: 12px;
+  padding: 24px;
+  background-color: var(--background-secondary);
+  box-shadow: var(--elevation-low);
+  border-radius: 12px;
 }
 
 .vc-up-delete-btn {
-    color: var(--text-muted);
-    cursor: pointer;
+  color: var(--text-muted);
+  cursor: pointer;
 }
 
 .vc-up-delete-btn:hover {
-    color: var(--text-normal);
+  color: var(--text-normal);
 }
 
 .vc-up-container-inner {
-    padding: 16px 12px;
-    background-color: var(--background-tertiary);
-    border-radius: 8px;
+  padding: 16px 12px;
+  background-color: var(--background-tertiary);
+  border-radius: 8px;
 }
 
 .vc-up-full-width {
-    width: 100%;
+  width: 100%;
 
-    input {
-        width: 100%;
-    }
+  input {
+    width: 100%;
+  }
 }
 
 .vc-up-alert-full [style^="flex"] {
-    height: unset !important;
+  height: unset !important;
 }
 
 .vc-up-alert-full [class^="markup_"] {
-    text-align: start;
+  text-align: start;
+}
+
+.vc-up-commit-hash {
+  color: var(--text-muted);
+  margin-left: 4px;
+  font-family: var(--font-code);
+}
+
+.vc-up-update-btn {
+  color: var(--text-positive);
+  cursor: pointer;
+}
+
+.vc-up-update-btn:hover {
+  color: var(--text-positive);
+  filter: brightness(1.2);
+}
+
+.vc-up-loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+@keyframes vc-up-spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.vc-up-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--text-muted);
+  border-top-color: var(--text-normal);
+  border-radius: 50%;
+  animation: vc-up-spin 1s linear infinite;
 }

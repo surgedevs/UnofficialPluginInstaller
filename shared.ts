@@ -4,8 +4,8 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-export const IPC_DONE_EVENT = "vc-up-done";
-export const IPC_STATE_EVENT = "vc-up-state";
+export const PLUGINS_STORE_KEY = "vc-unofficialplugins-plugins";
+export const ACKNOWLEDGEMENT_STORE_KEY = "vc-unofficialplugins-acknowledged";
 
 export enum ErrorCodes {
     SUCCESS = 0,
@@ -16,5 +16,31 @@ export enum ErrorCodes {
 
 export interface PartialPlugin {
     name: string;
-    description: string;
+    folderName: string;
+    source?: "link" | "directory";
+    repoLink?: string;
+    commitHash?: string;
+    needsUpdate?: boolean;
 }
+
+export type StoredPlugin = {
+    name: string;
+    folderName: string;
+    source: "link" | "directory";
+    repoLink?: string;
+    commitHash?: string;
+    needsUpdate?: boolean;
+};
+
+export type UnofficialPlugin = {
+    name: string;
+    folderName: string;
+    source?: "link" | "directory" | undefined;
+    partial?: boolean | undefined;
+    description: string;
+    repoLink?: string;
+    commitHash?: string;
+    needsUpdate?: boolean;
+};
+
+export type PartialOrNot = UnofficialPlugin & { partial?: false; } | PartialPlugin & { partial: true; };

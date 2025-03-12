@@ -5,7 +5,7 @@
  */
 
 import { exec, ExecException } from "child_process";
-import { IpcMainInvokeEvent } from "electron";
+import { dialog, IpcMainInvokeEvent } from "electron";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -25,7 +25,7 @@ interface ExecInformation {
 
 interface NativeResultSuccessState<T> {
     success: true,
-    data?: T,
+    data: T,
 }
 
 interface NativeResultFailState {
@@ -41,7 +41,6 @@ interface NativeResultFailState {
 type NativeResult<T> = NativeResultFailState | NativeResultSuccessState<T>;
 
 let working = false;
-let discordPath = "";
 
 function execAsync(command, additionalOptions = {}): Promise<ExecInformation> {
     return new Promise((res, rej) => {
@@ -64,10 +63,13 @@ function execAsync(command, additionalOptions = {}): Promise<ExecInformation> {
 }
 
 function getPluginNameFromPath(pluginPath: string): string | null {
-    if (!fs.existsSync(path.join(pluginPath, "index.tsx"))) return null;
+    const indexFiles = ["index.tsx", "index.jsx", "index.js", "index.ts"];
+
+    const indexFile = indexFiles.find(file => fs.existsSync(path.join(pluginPath, file)));
+    if (!indexFile) return null;
 
     try {
-        const fileContent = fs.readFileSync(path.join(pluginPath, "index.tsx"), "utf8");
+        const fileContent = fs.readFileSync(path.join(pluginPath, indexFile), "utf8");
         const nameMatch = fileContent.match(/name:\s*["']([^"']+)["']/);
         if (nameMatch) return nameMatch[1];
     } catch {
@@ -87,15 +89,6 @@ function createPluginDownloaderFolderIfNotExists(): void {
     if (!fs.existsSync(pluginDownloaderPath)) {
         fs.mkdirSync(pluginDownloaderPath, { recursive: true });
     }
-}
-
-export function setDiscordPath(_ipcEvent: IpcMainInvokeEvent, path: string): void {
-    if (path.endsWith("\\")) path = path.slice(0, -1);
-    if (!fs.existsSync(path)) {
-        throw new Error("Discord path does not exist!");
-    }
-
-    discordPath = path;
 }
 
 export function getFSPath(): string {
@@ -137,7 +130,7 @@ export async function initialiseRepo(): Promise<FailableWithInformation> {
         };
     }
 
-    // Patch runInstaller.mjs to allow us to pass cli args
+    // Patch runInstaller.mjs to allow us to pass cli args ;(
     const installerPath = path.join(getSourceFolder(), "scripts", "runInstaller.mjs");
     try {
         let content = fs.readFileSync(installerPath, "utf8");
@@ -194,7 +187,7 @@ export function isWorking(): boolean {
     return working;
 }
 
-export async function build(): Promise<NativeResult<void>> {
+export async function build(): Promise<NativeResult<null>> {
     const path = getSourceFolder();
     const buildResult = await execAsync(`cd ${path} && pnpm run build`).catch(e => e);
 
@@ -210,10 +203,139 @@ export async function build(): Promise<NativeResult<void>> {
         };
     }
 
-    return { success: true };
+    return { success: true, data: null };
 }
 
-export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLink: string): Promise<NativeResult<string | null>> {
+async function getLatestCommitHash(repoPath: string): Promise<string | null> {
+    try {
+        const result = await execAsync(`cd "${repoPath}" && git rev-parse HEAD`);
+        return result.stdout?.trim() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+async function getRemoteCommitHash(repoPath: string): Promise<string | null> {
+    try {
+        const result = await execAsync(`cd "${repoPath}" && git ls-remote origin HEAD`);
+        return result.stdout?.split("\t")[0]?.trim() ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ needsUpdate: boolean, currentHash?: string, remoteHash?: string; }>> {
+    const sourceFolder = getSourceFolder();
+    const pluginPath = path.join(sourceFolder, "src/userplugins", pluginName);
+
+    if (!fs.existsSync(pluginPath)) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Plugin not found!"
+            }
+        };
+    }
+
+    const currentHash = await getLatestCommitHash(pluginPath);
+    const remoteHash = await getRemoteCommitHash(pluginPath);
+
+    if (!currentHash || !remoteHash) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Failed to get commit hashes!"
+            }
+        };
+    }
+
+    return {
+        success: true,
+        data: {
+            needsUpdate: currentHash !== remoteHash,
+            currentHash,
+            remoteHash
+        }
+    };
+}
+
+export async function updatePlugin(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ commitHash: string; }>> {
+    const sourceFolder = getSourceFolder();
+    const pluginPath = path.join(sourceFolder, "src/userplugins", pluginName);
+
+    if (!fs.existsSync(pluginPath)) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Plugin not found!"
+            }
+        };
+    }
+
+    const updateResult = await execAsync(`cd "${pluginPath}" && git pull`).catch(e => e);
+
+    if (updateResult.error) {
+        return {
+            success: false,
+            error: {
+                object: updateResult.error,
+                message: "Failed to update plugin!",
+                stdout: updateResult.stdout,
+                stderr: updateResult.stderr
+            }
+        };
+    }
+
+    const commitHash = await getLatestCommitHash(pluginPath);
+    if (!commitHash) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Failed to get commit hash!"
+            }
+        };
+    }
+
+    return {
+        success: true,
+        data: {
+            commitHash
+        }
+    };
+}
+
+export async function updateAllPlugins(): Promise<NativeResult<{ updated: string[]; }>> {
+    const sourceFolder = getSourceFolder();
+    const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
+    const updatedPlugins: string[] = [];
+
+    if (!fs.existsSync(userPluginsFolder)) {
+        return {
+            success: true,
+            data: { updated: [] }
+        };
+    }
+
+    const plugins = fs.readdirSync(userPluginsFolder);
+
+    for (const plugin of plugins) {
+        const updateResult = await execAsync(`cd "${path.join(userPluginsFolder, plugin)}" && git pull`).catch(e => e);
+        if (!updateResult.error) {
+            updatedPlugins.push(plugin);
+        }
+    }
+
+    return {
+        success: true,
+        data: { updated: updatedPlugins }
+    };
+}
+
+export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLink: string): Promise<NativeResult<{ name: string | null; folderName: string; source: string; commitHash?: string; }>> {
     const sourceFolder = getSourceFolder();
 
     if (!isValidRepoLink(repoLink)) {
@@ -228,6 +350,19 @@ export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLin
 
     if (!fs.existsSync(path.join(sourceFolder, "src/userplugins"))) {
         fs.mkdirSync(path.join(sourceFolder, "src/userplugins"), { recursive: true });
+    }
+
+    const repoName = repoLink.split("/").pop() ?? "";
+    const targetPath = path.join(sourceFolder, "src/userplugins", repoName);
+
+    if (fs.existsSync(targetPath)) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Plugin already exists!"
+            }
+        };
     }
 
     const cloneCommand = `cd ${sourceFolder}/src/userplugins && git clone ${repoLink}`;
@@ -246,10 +381,38 @@ export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLin
     }
 
     const pluginName = getPluginNameFromPath(path.join(sourceFolder, "src/userplugins", repoLink.split("/").pop() ?? ""));
+    const commitHash = await getLatestCommitHash(path.join(sourceFolder, "src/userplugins", repoLink.split("/").pop() ?? ""));
 
     return {
         success: true,
-        data: pluginName
+        data: {
+            name: pluginName,
+            folderName: repoName,
+            source: "link",
+            commitHash: commitHash ?? undefined
+        }
+    };
+}
+
+export async function getPluginList(): Promise<NativeResult<{ pluginName: string; folderName: string; }[]>> {
+    const sourceFolder = getSourceFolder();
+    const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
+
+    if (!fs.existsSync(userPluginsFolder)) {
+        return {
+            success: true,
+            data: []
+        };
+    }
+
+    const plugins = fs.readdirSync(userPluginsFolder);
+
+    return {
+        success: true,
+        data: plugins.map(plugin => ({
+            pluginName: getPluginNameFromPath(path.join(userPluginsFolder, plugin)) ?? plugin,
+            folderName: plugin
+        }))
     };
 }
 
@@ -273,7 +436,7 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
         if (pluginName) {
             partialPlugins.push({
                 name: pluginName,
-                description: "This plugin was just installed! Build & Inject to load additional information."
+                folderName: plugin,
             });
         }
     }
@@ -284,7 +447,7 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
     };
 }
 
-export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<void>> {
+export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<null>> {
     const sourceFolder = getSourceFolder();
     const injectResult = await execAsync(`cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`, {
         stdio: "inherit",
@@ -306,5 +469,76 @@ export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Pro
         };
     }
 
-    return { success: true };
+    return { success: true, data: null };
+}
+
+export async function deletePlugin(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<null>> {
+    const sourceFolder = getSourceFolder();
+
+    if (!fs.existsSync(path.join(sourceFolder, "src/userplugins", pluginName))) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Plugin not found!"
+            }
+        };
+    }
+
+    fs.rmSync(path.join(sourceFolder, "src/userplugins", pluginName), { recursive: true, force: true });
+
+    return { success: true, data: null };
+}
+
+export async function installFromDirectory(_ipcEvent: IpcMainInvokeEvent): Promise<NativeResult<{ name: string | null; folderName: string; source: string; }>> {
+    const result = await dialog.showOpenDialog({
+        properties: ["openDirectory"]
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "No directory selected"
+            }
+        };
+    }
+
+    const sourceDir = result.filePaths[0];
+    const sourceFolder = getSourceFolder();
+    const folderName = path.basename(sourceDir);
+    const targetPath = path.join(sourceFolder, "src/userplugins", folderName);
+
+    if (fs.existsSync(targetPath)) {
+        return {
+            success: false,
+            error: {
+                object: null,
+                message: "Plugin already exists!"
+            }
+        };
+    }
+
+    try {
+        fs.cpSync(sourceDir, targetPath, { recursive: true });
+        const pluginName = getPluginNameFromPath(targetPath);
+        return {
+            success: true,
+            data: {
+                name: pluginName,
+                folderName: folderName,
+                source: "directory"
+            }
+        };
+    } catch (error: any) {
+        return {
+            success: false,
+            error: {
+                object: error,
+                message: "Failed to copy plugin directory!",
+                stderr: error.message
+            }
+        };
+    }
 }

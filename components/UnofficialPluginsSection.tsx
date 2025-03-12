@@ -12,9 +12,10 @@ import { Alerts, Button, Forms, useEffect, useState } from "@webpack/common";
 
 import Plugins from "~plugins";
 
-import { ErrorCodes, PartialPlugin } from "../shared";
+import { ErrorCodes, PartialPlugin, PLUGINS_STORE_KEY } from "../shared";
 import { AcknowledgementModal } from "./AcknowledgementModal";
 import Header from "./Header";
+import { LoadingOverlay } from "./LoadingOverlay";
 import PluginList from "./PluginList";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
@@ -27,6 +28,10 @@ export function UnofficialPluginsSection() {
     const [initialised, setInitialised] = useState(false);
     const [currentState, setCurrentState] = useState("");
     const [partialPlugins, setPartialPlugins] = useState<PartialPlugin[]>([]);
+    const [hasUpdates, setHasUpdates] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
+    const [loadingText, setLoadingText] = useState<string>();
+
     const onModalConfirm = async () => {
         acknowledged = true;
 
@@ -47,7 +52,7 @@ export function UnofficialPluginsSection() {
                     title: "Attention!",
                     body: <AcknowledgementModal onConfirm={onModalConfirm} />,
                     className: "vc-up-alert",
-                    onCloseCallback: () => (console.log(acknowledged), !acknowledged && Alerts.show(alert)),
+                    onCloseCallback: () => !acknowledged && Alerts.show(alert),
                 };
 
                 Alerts.show(alert);
@@ -105,8 +110,17 @@ export function UnofficialPluginsSection() {
 
         if (alert) {
             Alerts.show(alert);
+            return;
         }
 
+        setPartialPlugins([{
+            name: "Unofficial Plugin Installer",
+            source: "link",
+            repoLink: "https://github.com/surgedevs/UnofficialPluginInstaller",
+            folderName: "UnofficialPluginInstaller"
+        }]);
+
+        await DataStore.set(PLUGINS_STORE_KEY, partialPlugins);
         setInitialised(true);
     };
 
@@ -114,42 +128,66 @@ export function UnofficialPluginsSection() {
         setPartialPlugins([...partialPlugins, partialPlugin]);
     };
 
+    const handlePluginUpdate = (hasAvailableUpdates: boolean, isChecking?: boolean) => {
+        setHasUpdates(hasAvailableUpdates);
+        if (isChecking !== undefined) {
+            setIsLoading(isChecking);
+            setLoadingText(isChecking ? "Checking for updates..." : undefined);
+        }
+    };
+
     return (
         <SettingsTab title="Unofficial Plugins">
-            {initialised ? <>
-                <Header onInstall={onInstall} />
-                <PluginList partialPlugins={partialPlugins} />
-            </> : <>
-                <div className="vc-up-container">
-                    <Forms.FormTitle>
-                        Uninitialised!
-                    </Forms.FormTitle>
+            <div style={{ position: "relative" }}>
+                {(isLoading || isInitialising) && <LoadingOverlay text={loadingText || currentState} />}
+                {initialised ? <>
+                    <Header
+                        onInstall={onInstall}
+                        hasUpdates={hasUpdates}
+                        onLoadingChange={(loading, text) => {
+                            setIsLoading(loading);
+                            setLoadingText(text);
+                        }}
+                    />
+                    <PluginList
+                        partialPlugins={partialPlugins}
+                        onUpdateCheck={handlePluginUpdate}
+                        onLoadingChange={(loading, text) => {
+                            setIsLoading(loading);
+                            setLoadingText(text);
+                        }}
+                    />
+                </> : <>
+                    <div className="vc-up-container">
+                        <Forms.FormTitle>
+                            Uninitialised!
+                        </Forms.FormTitle>
 
-                    <Forms.FormText>
-                        The Unofficial Plugin Loader is not yet initliased, click the button below to start.<br />
-                        Note that this will install a bunch of extra files on your computer.
+                        <Forms.FormText>
+                            The Unofficial Plugin Loader is not yet initliased, click the button below to start.<br />
+                            Note that this will install a bunch of extra files on your computer.
 
-                        <Forms.FormText type={Forms.FormText.Types.ERROR} className={Margins.top16}>
-                            Requires Git and PNPM installed.<br />
-                            Git for windows: https://git-scm.com/download/win
-                            PNPM: https://pnpm.io/installation
+                            <Forms.FormText type={Forms.FormText.Types.ERROR} className={Margins.top16}>
+                                Requires Git and PNPM installed.<br />
+                                Git for windows: https://git-scm.com/download/win
+                                PNPM: https://pnpm.io/installation
+                            </Forms.FormText>
+
+                            <Button
+                                onClick={onInitialiseClick}
+                                disabled={isInitialising}
+                                size={Button.Sizes.LARGE}
+                                className={Margins.top16}
+                                color={Button.Colors.RED}
+                            >Initialise</Button>
+
+                            <Forms.FormText type="description">
+                                {currentState}
+                            </Forms.FormText>
                         </Forms.FormText>
-
-                        <Button
-                            onClick={onInitialiseClick}
-                            disabled={isInitialising}
-                            size={Button.Sizes.LARGE}
-                            className={Margins.top16}
-                            color={Button.Colors.RED}
-                        >Initialise</Button>
-
-                        <Forms.FormText type="description">
-                            {currentState}
-                        </Forms.FormText>
-                    </Forms.FormText>
-                </div>
-            </>}
-
+                    </div>
+                </>}
+            </div>
         </SettingsTab>
     );
 }
