@@ -49,12 +49,12 @@ export default function Header({
 
             const plugins = await DataStore.get(PLUGINS_STORE_KEY) || {};
 
-            plugins[result.data.name ?? "Unknown"] = {
+            plugins.push({
                 name: result.data.name ?? "Unknown",
                 folderName: result.data.folderName ?? "Unknown",
                 source: "link",
                 repoLink: linkInput
-            };
+            });
 
             await DataStore.set(PLUGINS_STORE_KEY, plugins);
 

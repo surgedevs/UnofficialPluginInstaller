@@ -4,28 +4,37 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+import { DataStore } from "@api/index";
 import { Flex } from "@components/Flex";
 import { Link } from "@components/Link";
 import { Margins } from "@utils/margins";
 import { PluginNative } from "@utils/types";
 import { Button, Forms, showToast } from "@webpack/common";
 
-import { PartialOrNot } from "../shared";
+import { PartialOrNot, PLUGINS_STORE_KEY } from "../shared";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 
 export default function PluginItem({
     plugin,
-    onUpdate
+    onUpdate,
+    onDelete
 }: {
     plugin: PartialOrNot;
     onUpdate?: (pluginName: string) => void;
+    onDelete?: (pluginName: string) => void;
 }) {
     const onDeleteClick = async () => {
         const result = await Native.deletePlugin(plugin.folderName);
 
         if (result.success) {
+            const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || {};
+
+            const updatedPlugins = storedPlugins.filter(p => p.name !== plugin.name);
+            await DataStore.set(PLUGINS_STORE_KEY, updatedPlugins);
+
             showToast("Plugin source deleted successfully. Build & inject to remove from Discord.", "success");
+            onDelete?.(plugin.name);
         } else {
             showToast("Failed to delete plugin source.", "failure");
         }

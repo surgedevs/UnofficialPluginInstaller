@@ -35,84 +35,77 @@ export default function PluginList({
         needsUpdate?: boolean;
     }>>([]);
 
+    const updatePluginsAndNotify = (newPlugins: typeof plugins) => {
+        setPlugins(newPlugins);
+        const hasUpdates = newPlugins.some(p => p.needsUpdate);
+        onUpdateCheck?.(hasUpdates, false);
+    };
+
     const checkForUpdates = async (pluginList: typeof plugins) => {
         onLoadingChange(true, "Checking for updates...");
-        const updatedPlugins = [...pluginList];
-        let hasAvailableUpdates = false;
 
-        for (const plugin of updatedPlugins) {
-            if (plugin.source === "link") {
-                const result = await Native.checkPluginUpdates(plugin.folderName);
-                if (result.success) {
-                    plugin.needsUpdate = result.data.needsUpdate;
-                    plugin.commitHash = result.data.currentHash;
-                    if (result.data.needsUpdate) {
-                        hasAvailableUpdates = true;
-                    }
-                }
-            }
-        }
+        const updatedPlugins = await Promise.all(pluginList.map(async plugin => {
+            if (plugin.source !== "link") return plugin;
 
-        setPlugins(updatedPlugins);
-        onUpdateCheck?.(hasAvailableUpdates, false);
+            const result = await Native.checkPluginUpdates(plugin.folderName);
+            if (!result.success) return plugin;
+
+            return {
+                ...plugin,
+                needsUpdate: result.data.needsUpdate,
+                commitHash: result.data.currentHash
+            };
+        }));
+
+        updatePluginsAndNotify(updatedPlugins);
         onLoadingChange(false);
     };
 
     useEffect(() => {
-        (async () => {
+        async function initializePlugins() {
             const result = await Native.getPluginList();
-            const folderMap = result.success ? Object.fromEntries(
-                result.data?.map(({ pluginName, folderName }) => [pluginName, folderName]) ?? []
-            ) : {};
+            const folderMap = result.success
+                ? Object.fromEntries(result.data?.map(({ pluginName, folderName }) => [pluginName, folderName]) ?? [])
+                : {};
 
-            const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || {};
+            const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || [];
+            const pluginMetaMap = Object.fromEntries(storedPlugins.map(plugin => [plugin.name, plugin]));
 
-            const pluginMetaMap = Array.isArray(storedPlugins)
-                ? Object.fromEntries(storedPlugins.map(plugin => [plugin.name, plugin]))
-                : Object.fromEntries(
-                    Object.entries(storedPlugins)
-                        .map(([name, data]) => [name, data as PartialPlugin])
-                        .filter(([_, data]) => data !== undefined)
-                );
+            const mapPlugin = (p: any, isPartial = false) => ({
+                ...p,
+                folderName: folderMap[p.name],
+                source: pluginMetaMap[p.name]?.source,
+                repoLink: pluginMetaMap[p.name]?.repoLink,
+                partial: isPartial,
+                needsUpdate: false
+            });
 
             const allPlugins = [
                 ...partialPlugins
                     .filter(p => folderMap[p.name])
-                    .map(p => ({
-                        ...p,
-                        folderName: folderMap[p.name],
-                        source: pluginMetaMap[p.name]?.source,
-                        repoLink: pluginMetaMap[p.name]?.repoLink,
-                        partial: true,
-                        needsUpdate: false
-                    })),
-
+                    .map(p => mapPlugin(p, true)),
                 ...Object.values(Plugins)
                     .filter(p => PluginMeta[p.name]?.userPlugin && folderMap[p.name])
-                    .map(p => ({
-                        ...p,
-                        folderName: folderMap[p.name],
-                        source: pluginMetaMap[p.name]?.source,
-                        repoLink: pluginMetaMap[p.name]?.repoLink,
-                        needsUpdate: false
-                    }))
+                    .map(p => mapPlugin(p))
             ];
 
             setPlugins(allPlugins);
             checkForUpdates(allPlugins);
-        })();
+        }
+
+        initializePlugins();
     }, [partialPlugins]);
 
     const handleUpdate = (pluginName: string) => {
-        const updatedPlugins = plugins.map(p => {
-            if (p.name === pluginName) {
-                return { ...p, needsUpdate: false };
-            }
-            return p;
-        });
-        setPlugins(updatedPlugins);
-        const stillNeedsUpdates = updatedPlugins.some(p => p.needsUpdate);
-        onUpdateCheck?.(stillNeedsUpdates, false);
+        updatePluginsAndNotify(
+            plugins.map(p => p.name === pluginName ? { ...p, needsUpdate: false } : p)
+        );
+    };
+
+    const handleDelete = (pluginName: string) => {
+        updatePluginsAndNotify(
+            plugins.filter(p => p.name !== pluginName)
+        );
     };
 
     return (
@@ -123,6 +116,7 @@ export default function PluginList({
                         key={plugin.name}
                         plugin={plugin as PartialOrNot}
                         onUpdate={handleUpdate}
+                        onDelete={handleDelete}
                     />
                 ))}
             </Grid>
