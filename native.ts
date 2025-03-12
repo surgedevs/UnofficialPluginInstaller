@@ -153,13 +153,27 @@ export async function initialiseRepo(): Promise<FailableWithInformation> {
         };
     }
 
-    const packageCommand = `cd "${getSourceFolder()}" && pnpm i --frozen-lockfile`;
+    const packageCommand = `cd "${getSourceFolder()}" && pnpm i --no-frozen-lockfile`;
     const packageSuccess = await execAsync(packageCommand).catch(err => err);
 
     if (packageSuccess.error) {
         return {
             code: ErrorCodes.FAILED_PACKAGE_INSTALL,
             information: `stdout: ${packageSuccess.stdout}; stderr: ${packageSuccess.stderr}`
+        };
+    }
+
+    if (!fs.existsSync(path.join(getSourceFolder(), "src/userplugins"))) {
+        fs.mkdirSync(path.join(getSourceFolder(), "src/userplugins"), { recursive: true });
+    }
+
+    const pluginCloneCommand = `cd "${getSourceFolder()}/src/userplugins" && git clone https://github.com/surgedevs/UnofficialPluginInstaller.git`;
+    const pluginCloneSuccess = await execAsync(pluginCloneCommand).catch(err => err);
+
+    if (pluginCloneSuccess.error) {
+        return {
+            code: ErrorCodes.FAILED_PACKAGE_INSTALL,
+            information: `stdout: ${pluginCloneSuccess.stdout}; stderr: ${pluginCloneSuccess.stderr}`
         };
     }
 
@@ -244,6 +258,14 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
     const partialPlugins: PartialPlugin[] = [];
 
     const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
+
+    if (!fs.existsSync(userPluginsFolder)) {
+        return {
+            success: true,
+            data: []
+        };
+    }
+
     const userPlugins = fs.readdirSync(userPluginsFolder);
 
     for (const plugin of userPlugins) {
@@ -262,9 +284,9 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
     };
 }
 
-export async function inject(): Promise<NativeResult<void>> {
+export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<void>> {
     const sourceFolder = getSourceFolder();
-    const injectResult = await execAsync(`cd ${sourceFolder} && pnpm run inject -- --install --branch canary`, {
+    const injectResult = await execAsync(`cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`, {
         stdio: "inherit",
         env: {
             ...process.env,

@@ -18,33 +18,18 @@
 
 import "./style.css";
 
-import { definePluginSettings } from "@api/Settings";
 import { wrapTab } from "@components/VencordSettings/shared";
 import { Devs } from "@utils/constants";
-import definePlugin, { OptionType, PluginNative, StartAt } from "@utils/types";
+import definePlugin, { StartAt } from "@utils/types";
 import SettingsPlugin from "plugins/_core/settings";
 
 import { UnofficialPluginsSection } from "./components/UnofficialPluginsSection";
-
-const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("./native")>;
-
-const pluginSettings = definePluginSettings({
-    source: {
-        type: OptionType.STRING,
-        description: "Your Discord install location",
-        default: "C:\\Users\\{username}\\AppData\\Local\\Discord",
-        onChange: () => {
-            Native.setDiscordPath(pluginSettings.store.source);
-        }
-    },
-});
 
 export default definePlugin({
     name: "UnofficialPluginInstaller",
     description: "Allows you to easily install and manage custom plugins",
     authors: [Devs.surgedevs],
     startAt: StartAt.Init,
-    settings: pluginSettings,
     enabledByDefault: true,
 
     start() {
@@ -54,7 +39,5 @@ export default definePlugin({
             element: wrapTab(UnofficialPluginsSection, "UnofficialPlugins"),
             classname: "vc-up"
         }));
-
-        Native.setDiscordPath(this.settings.store.source);
     }
 });

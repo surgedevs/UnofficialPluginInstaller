@@ -69,7 +69,7 @@ export function UnofficialPluginsSection() {
                 setPartialPlugins(filteredPlugins);
             }
         })();
-    });
+    }, []);
 
     const onInitialiseClick = async () => {
         setIsInitialising(true);
@@ -100,6 +100,8 @@ export function UnofficialPluginsSection() {
                 };
             }
         }
+
+        console.log(errorCode.information);
 
         if (alert) {
             Alerts.show(alert);

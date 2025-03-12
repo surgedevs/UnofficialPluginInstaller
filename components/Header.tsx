@@ -12,6 +12,7 @@ import { PluginNative } from "@utils/types";
 import { Alerts, Button, Forms, Text, TextInput, Toasts, useState } from "@webpack/common";
 
 import { PartialPlugin } from "../shared";
+import { BuildConfirmationModal } from "./BuildConfirmationModal";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 
@@ -57,69 +58,82 @@ export default function Header({
         showItemInFolder(await Native.getSourceFolder());
     };
 
-    const onClickBuild = async () => {
-        setIsWorking(true);
-        const result = await Native.build();
+    const onClickBuildAndInject = async () => {
+        const handleConfirm = async (branch: "stable" | "ptb" | "canary") => {
+            setIsWorking(true);
 
-        if (result.success) {
+            const buildResult = await Native.build();
+            if (!buildResult.success) {
+                console.warn("Build resulted in an error!", buildResult.error?.object);
+
+                Alerts.show({
+                    title: buildResult.error?.message,
+                    body: <>
+                        <Text
+                            tag="h2"
+                            variant="eyebrow"
+                            style={{
+                                color: "var(--header-primary)",
+                                display: "inline"
+                            }}
+                        >
+                            {buildResult.error?.message}
+                        </Text>
+
+                        <Forms.FormText>stdout:</Forms.FormText>
+                        <CodeBlock lang="javascript" content={buildResult.error?.stdout} />
+
+                        <Forms.FormText>stderr:</Forms.FormText>
+                        <CodeBlock lang="javascript" content={buildResult.error?.stderr} />
+                    </>,
+                    className: "vc-up-alert-full"
+                });
+
+                setIsWorking(false);
+                return;
+            }
+
             Toasts.show({
                 message: "Build success!",
                 id: "vc-up-build",
                 type: Toasts.Type.SUCCESS,
             });
-            setIsWorking(false);
-            return;
-        }
 
-        console.warn("Build resulted in an error!", result.error?.object);
+            const injectResult = await Native.inject(branch);
+            if (!injectResult.success) {
+                console.warn("Injection resulted in an error!", injectResult.error?.object);
 
-        Alerts.show({
-            title: result.error?.message,
-            body: <>
-                <Text
-                    tag="h2"
-                    variant="eyebrow"
-                    style={{
-                        color: "var(--header-primary)",
-                        display: "inline"
-                    }}
-                >
-                    {result.error?.message}
-                </Text>
+                Alerts.show({
+                    title: injectResult.error?.message,
+                    body: injectResult.error?.stderr,
+                    className: "vc-up-alert-full"
+                });
 
-                <Forms.FormText>stdout:</Forms.FormText>
-                <CodeBlock lang="javascript" content={result.error?.stdout} />
+                setIsWorking(false);
+                return;
+            }
 
-                <Forms.FormText>stderr:</Forms.FormText>
-                <CodeBlock lang="javascript" content={result.error?.stderr} />
-            </>,
-            className: "vc-up-alert-full"
-        });
-
-        setIsWorking(false);
-    };
-
-    const onClickInject = async () => {
-        setIsWorking(true);
-        const result = await Native.inject();
-
-        if (result.success) {
             Toasts.show({
                 message: "Injection successful!",
                 id: "vc-up-inject",
                 type: Toasts.Type.SUCCESS,
             });
+
             setIsWorking(false);
-            return;
-        }
+        };
 
-        console.warn("Injection resulted in an error!", result.error?.object);
+        const alert = {
+            title: "Confirm Build & Inject",
+            body: <BuildConfirmationModal onConfirm={handleConfirm} />,
+            className: "vc-up-alert"
+        };
 
-        Alerts.show({
-            title: result.error?.message,
-            body: result.error?.stderr,
-            className: "vc-up-alert-full"
-        });
+        Alerts.show(alert);
+    };
+
+    const onClickUpdateAll = async () => {
+        // setIsWorking(true);
+        // const result = await Native.updateAll();
     };
 
     return <div className={"vc-up-container " + Margins.bottom16}>
@@ -147,8 +161,8 @@ export default function Header({
             <Flex flexDirection="row" className={Margins.top16} style={{ justifyContent: "space-between" }}>
                 <Button disabled={isWorking} onClick={onClickOpenSource}>Install From Directory</Button>
                 <Button disabled={isWorking} onClick={onClickOpenSource}>Open Source Folder</Button>
-                <Button disabled={isWorking} onClick={onClickBuild}>Build</Button>
-                <Button disabled={isWorking} color={Button.Colors.RED} onClick={onClickInject}>Inject</Button>
+                <Button disabled={isWorking} onClick={onClickUpdateAll}>Update All</Button>
+                <Button disabled={isWorking} color={Button.Colors.RED} onClick={onClickBuildAndInject}>Build & Inject</Button>
             </Flex>
         </div>
     </div >;
