@@ -166,7 +166,9 @@ export default function Header({
                 const result = await Native.updateAllPlugins();
                 if (result.success) {
                     showToast(`Updated ${result.data.updated.length} plugins. Build & Inject to apply changes.`, "success");
-                    onUpdateAll?.();
+                    result.data.updated.forEach(pluginName => {
+                        onUpdateAll?.();
+                    });
                 } else {
                     showToast("Failed to update plugins.", "failure");
                 }

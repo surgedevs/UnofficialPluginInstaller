@@ -8,7 +8,7 @@ import { Flex } from "@components/Flex";
 import { Link } from "@components/Link";
 import { Margins } from "@utils/margins";
 import { PluginNative } from "@utils/types";
-import { Button, Forms, showToast, useState } from "@webpack/common";
+import { Button, Forms, showToast } from "@webpack/common";
 
 import { PartialOrNot } from "../shared";
 
@@ -23,8 +23,6 @@ export default function PluginItem({
     onUpdate?: (pluginName: string) => void;
     resetUpdateStates?: () => void;
 }) {
-    const [isUpdating, setIsUpdating] = useState(false);
-
     const onDeleteClick = async () => {
         const result = await Native.deletePlugin(plugin.folderName);
 
@@ -37,15 +35,12 @@ export default function PluginItem({
 
     const handleUpdate = async () => {
         try {
-            setIsUpdating(true);
             await Native.updatePlugin(plugin.folderName);
             showToast("Plugin updated successfully!", "success");
             onUpdate?.(plugin.name);
             resetUpdateStates?.();
         } catch (err) {
             showToast(`Failed to update plugin: ${err}`, "failure");
-        } finally {
-            setIsUpdating(false);
         }
     };
 
@@ -57,7 +52,7 @@ export default function PluginItem({
                 </Forms.FormText>
 
                 <Flex style={{ gap: "8px" }}>
-                    {plugin.source === "link" && plugin.needsUpdate && !isUpdating && (
+                    {plugin.source === "link" && plugin.needsUpdate && (
                         <Button
                             size={Button.Sizes.NONE}
                             look={Button.Looks.BLANK}
@@ -91,7 +86,7 @@ export default function PluginItem({
             </Forms.FormText>
         ) : (
             <Forms.FormText>
-                {(plugin as any).description}
+                {plugin.description}
             </Forms.FormText>
         )}
 

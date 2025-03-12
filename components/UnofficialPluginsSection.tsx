@@ -42,6 +42,12 @@ export default function UnofficialPluginsSection() {
     const handleUpdateAll = () => {
         setHasUpdates(false);
         setIsChecking(false);
+
+        const pluginListComponent = document.querySelector('div[class*="PluginList"]');
+        if (pluginListComponent) {
+            const event = new Event("updateCheck");
+            pluginListComponent.dispatchEvent(event);
+        }
     };
 
     const onModalConfirm = async () => {

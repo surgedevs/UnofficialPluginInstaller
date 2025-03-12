@@ -33,7 +33,6 @@ export default function PluginList({
         partial?: boolean;
         commitHash?: string;
         needsUpdate?: boolean;
-        updating?: boolean;
     }>>([]);
 
     const checkForUpdates = async (pluginList: typeof plugins) => {
@@ -47,7 +46,6 @@ export default function PluginList({
                 if (result.success) {
                     plugin.needsUpdate = result.data.needsUpdate;
                     plugin.commitHash = result.data.currentHash;
-                    plugin.updating = false;
                     if (result.data.needsUpdate) {
                         hasAvailableUpdates = true;
                     }
@@ -61,7 +59,7 @@ export default function PluginList({
     };
 
     const resetUpdateStates = () => {
-        const updatedPlugins = plugins.map(p => ({ ...p, needsUpdate: false, updating: false }));
+        const updatedPlugins = plugins.map(p => ({ ...p, needsUpdate: false }));
         setPlugins(updatedPlugins);
         onUpdateCheck?.(false, false);
     };
@@ -92,7 +90,8 @@ export default function PluginList({
                             folderName: folderMap[p.name],
                             source: pluginMetaMap[p.name]?.source,
                             repoLink: pluginMetaMap[p.name]?.repoLink,
-                            partial: true
+                            partial: true,
+                            needsUpdate: false
                         };
                     }),
 
@@ -103,7 +102,8 @@ export default function PluginList({
                             ...p,
                             folderName: folderMap[p.name],
                             source: pluginMetaMap[p.name]?.source,
-                            repoLink: pluginMetaMap[p.name]?.repoLink
+                            repoLink: pluginMetaMap[p.name]?.repoLink,
+                            needsUpdate: false
                         };
                     })
             ];
@@ -116,7 +116,7 @@ export default function PluginList({
     const handleUpdate = (pluginName: string) => {
         const updatedPlugins = plugins.map(p => {
             if (p.name === pluginName) {
-                return { ...p, needsUpdate: false, updating: false };
+                return { ...p, needsUpdate: false };
             }
             return p;
         });
