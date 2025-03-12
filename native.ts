@@ -80,7 +80,15 @@ function getPluginNameFromPath(pluginPath: string): string | null {
 }
 
 function isValidRepoLink(repoLink: string): boolean {
-    return repoLink.startsWith("https://github.com/") || repoLink.startsWith("git@github.com:");
+    return repoLink.endsWith(".git") ||
+           repoLink.startsWith("https://github.com/") ||
+           repoLink.startsWith("git@github.com:") ||
+           repoLink.startsWith("https://gitlab.com/") ||
+           repoLink.startsWith("git@gitlab.com:") ||
+           repoLink.startsWith("https://bitbucket.org/") ||
+           repoLink.startsWith("git@bitbucket.org:") ||
+           /^https?:\/\/.*\.git$/.test(repoLink) ||
+           /^git@.*:.+\/.+$/.test(repoLink);
 }
 
 function createPluginDownloaderFolderIfNotExists(): void {
