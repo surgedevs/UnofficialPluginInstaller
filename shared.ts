@@ -19,8 +19,10 @@ export interface PartialPlugin {
     folderName: string;
     source?: "link" | "directory";
     repoLink?: string;
+    partial?: boolean;
     commitHash?: string;
     needsUpdate?: boolean;
+    updating?: boolean;
 }
 
 export type StoredPlugin = {
@@ -43,4 +45,4 @@ export type UnofficialPlugin = {
     needsUpdate?: boolean;
 };
 
-export type PartialOrNot = UnofficialPlugin & { partial?: false; } | PartialPlugin & { partial: true; };
+export type PartialOrNot = PartialPlugin | (UnofficialPlugin & { partial?: boolean; });
