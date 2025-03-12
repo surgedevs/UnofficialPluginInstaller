@@ -1,0 +1,41 @@
+.vc-up-alert [class*="footerSeparator_"] {
+    display: none;
+}
+
+.vc-up-container {
+    padding: 24px;
+    background-color: var(--background-secondary);
+    box-shadow: var(--elevation-low);
+    border-radius: 12px;
+}
+
+.vc-up-delete-btn {
+    color: var(--text-muted);
+    cursor: pointer;
+}
+
+.vc-up-delete-btn:hover {
+    color: var(--text-normal);
+}
+
+.vc-up-container-inner {
+    padding: 16px 12px;
+    background-color: var(--background-tertiary);
+    border-radius: 8px;
+}
+
+.vc-up-full-width {
+    width: 100%;
+
+    input {
+        width: 100%;
+    }
+}
+
+.vc-up-alert-full [style^="flex"] {
+    height: unset !important;
+}
+
+.vc-up-alert-full [class^="markup_"] {
+    text-align: start;
+}

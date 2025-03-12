@@ -1,0 +1,60 @@
+/*
+ * Vencord, a modification for Discord's desktop app
+ * Copyright (c) 2023 Vendicated and contributors
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
+
+import "./style.css";
+
+import { definePluginSettings } from "@api/Settings";
+import { wrapTab } from "@components/VencordSettings/shared";
+import { Devs } from "@utils/constants";
+import definePlugin, { OptionType, PluginNative, StartAt } from "@utils/types";
+import SettingsPlugin from "plugins/_core/settings";
+
+import { UnofficialPluginsSection } from "./components/UnofficialPluginsSection";
+
+const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("./native")>;
+
+const pluginSettings = definePluginSettings({
+    source: {
+        type: OptionType.STRING,
+        description: "Your Discord install location",
+        default: "C:\\Users\\{username}\\AppData\\Local\\Discord",
+        onChange: () => {
+            Native.setDiscordPath(pluginSettings.store.source);
+        }
+    },
+});
+
+export default definePlugin({
+    name: "UnofficialPluginInstaller",
+    description: "Allows you to easily install and manage custom plugins",
+    authors: [Devs.surgedevs],
+    startAt: StartAt.Init,
+    settings: pluginSettings,
+    enabledByDefault: true,
+
+    start() {
+        SettingsPlugin.customSections.push(sectionTypes => ({
+            section: "UnofficialPlugins",
+            label: "Unofficial Plugins",
+            element: wrapTab(UnofficialPluginsSection, "UnofficialPlugins"),
+            classname: "vc-up"
+        }));
+
+        Native.setDiscordPath(this.settings.store.source);
+    }
+});
