@@ -58,12 +58,6 @@ export default function PluginList({
         onLoadingChange(false);
     };
 
-    const resetUpdateStates = () => {
-        const updatedPlugins = plugins.map(p => ({ ...p, needsUpdate: false }));
-        setPlugins(updatedPlugins);
-        onUpdateCheck?.(false, false);
-    };
-
     useEffect(() => {
         (async () => {
             const result = await Native.getPluginList();
@@ -84,28 +78,24 @@ export default function PluginList({
             const allPlugins = [
                 ...partialPlugins
                     .filter(p => folderMap[p.name])
-                    .map(p => {
-                        return {
-                            ...p,
-                            folderName: folderMap[p.name],
-                            source: pluginMetaMap[p.name]?.source,
-                            repoLink: pluginMetaMap[p.name]?.repoLink,
-                            partial: true,
-                            needsUpdate: false
-                        };
-                    }),
+                    .map(p => ({
+                        ...p,
+                        folderName: folderMap[p.name],
+                        source: pluginMetaMap[p.name]?.source,
+                        repoLink: pluginMetaMap[p.name]?.repoLink,
+                        partial: true,
+                        needsUpdate: false
+                    })),
 
                 ...Object.values(Plugins)
                     .filter(p => PluginMeta[p.name]?.userPlugin && folderMap[p.name])
-                    .map(p => {
-                        return {
-                            ...p,
-                            folderName: folderMap[p.name],
-                            source: pluginMetaMap[p.name]?.source,
-                            repoLink: pluginMetaMap[p.name]?.repoLink,
-                            needsUpdate: false
-                        };
-                    })
+                    .map(p => ({
+                        ...p,
+                        folderName: folderMap[p.name],
+                        source: pluginMetaMap[p.name]?.source,
+                        repoLink: pluginMetaMap[p.name]?.repoLink,
+                        needsUpdate: false
+                    }))
             ];
 
             setPlugins(allPlugins);
@@ -121,7 +111,6 @@ export default function PluginList({
             return p;
         });
         setPlugins(updatedPlugins);
-        // Check if any plugins still need updates
         const stillNeedsUpdates = updatedPlugins.some(p => p.needsUpdate);
         onUpdateCheck?.(stillNeedsUpdates, false);
     };
@@ -134,7 +123,6 @@ export default function PluginList({
                         key={plugin.name}
                         plugin={plugin as PartialOrNot}
                         onUpdate={handleUpdate}
-                        resetUpdateStates={resetUpdateStates}
                     />
                 ))}
             </Grid>

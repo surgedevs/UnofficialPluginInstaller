@@ -28,6 +28,7 @@ export default function UnofficialPluginsSection() {
     const [hasUpdates, setHasUpdates] = useState(false);
     const [isChecking, setIsChecking] = useState(false);
     const [plugins, setPlugins] = useState<PartialPlugin[]>([]);
+    const [updateTimestamp, setUpdateTimestamp] = useState(Date.now());
 
     const handleLoadingChange = (isLoading: boolean, text?: string) => {
         setLoading(isLoading);
@@ -42,12 +43,7 @@ export default function UnofficialPluginsSection() {
     const handleUpdateAll = () => {
         setHasUpdates(false);
         setIsChecking(false);
-
-        const pluginListComponent = document.querySelector('div[class*="PluginList"]');
-        if (pluginListComponent) {
-            const event = new Event("updateCheck");
-            pluginListComponent.dispatchEvent(event);
-        }
+        setUpdateTimestamp(Date.now());
     };
 
     const onModalConfirm = async () => {
@@ -148,8 +144,8 @@ export default function UnofficialPluginsSection() {
                     onLoadingChange={handleLoadingChange}
                     onUpdateAll={handleUpdateAll}
                 />
-
                 <PluginList
+                    key={updateTimestamp}
                     partialPlugins={plugins}
                     onUpdateCheck={handleUpdateCheck}
                     onLoadingChange={handleLoadingChange}

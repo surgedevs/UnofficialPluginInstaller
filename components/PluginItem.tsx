@@ -16,12 +16,10 @@ const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNa
 
 export default function PluginItem({
     plugin,
-    onUpdate,
-    resetUpdateStates
+    onUpdate
 }: {
     plugin: PartialOrNot;
     onUpdate?: (pluginName: string) => void;
-    resetUpdateStates?: () => void;
 }) {
     const onDeleteClick = async () => {
         const result = await Native.deletePlugin(plugin.folderName);
@@ -38,7 +36,6 @@ export default function PluginItem({
             await Native.updatePlugin(plugin.folderName);
             showToast("Plugin updated successfully!", "success");
             onUpdate?.(plugin.name);
-            resetUpdateStates?.();
         } catch (err) {
             showToast(`Failed to update plugin: ${err}`, "failure");
         }
