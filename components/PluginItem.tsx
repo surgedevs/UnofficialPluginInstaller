@@ -17,11 +17,11 @@ const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNa
 export default function PluginItem({
     plugin,
     onUpdate,
-    isLoading
+    resetUpdateStates
 }: {
     plugin: PartialOrNot;
     onUpdate?: (pluginName: string) => void;
-    isLoading?: boolean;
+    resetUpdateStates?: () => void;
 }) {
     const onDeleteClick = async () => {
         const result = await Native.deletePlugin(plugin.folderName);
@@ -33,13 +33,14 @@ export default function PluginItem({
         }
     };
 
-    const onUpdateClick = async () => {
-        const result = await Native.updatePlugin(plugin.folderName);
-        if (result.success) {
-            showToast("Plugin updated successfully. Build & inject to apply changes.", "success");
+    const handleUpdate = async () => {
+        try {
+            await Native.updatePlugin(plugin.folderName);
+            showToast("Plugin updated successfully!", "success");
             onUpdate?.(plugin.name);
-        } else {
-            showToast("Failed to update plugin.", "failure");
+            resetUpdateStates?.();
+        } catch (err) {
+            showToast(`Failed to update plugin: ${err}`, "failure");
         }
     };
 
@@ -56,8 +57,7 @@ export default function PluginItem({
                             size={Button.Sizes.NONE}
                             look={Button.Looks.BLANK}
                             className="vc-up-update-btn"
-                            onClick={onUpdateClick}
-                            disabled={isLoading}
+                            onClick={handleUpdate}
                         >
                             <svg width="20" height="20" viewBox="0 0 24 24">
                                 <path fill="currentColor" d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
@@ -70,7 +70,6 @@ export default function PluginItem({
                         look={Button.Looks.BLANK}
                         className="vc-up-delete-btn"
                         onClick={onDeleteClick}
-                        disabled={isLoading}
                     >
                         <svg width="20" height="20" viewBox="0 0 24 24">
                             <path fill="currentColor" d="M15 3.999V2H9V3.999H3V5.999H21V3.999H15Z" />

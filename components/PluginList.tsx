@@ -58,6 +58,12 @@ export default function PluginList({
         onLoadingChange(false);
     };
 
+    const resetUpdateStates = () => {
+        const updatedPlugins = plugins.map(p => ({ ...p, needsUpdate: false }));
+        setPlugins(updatedPlugins);
+        onUpdateCheck?.(false, false);
+    };
+
     useEffect(() => {
         (async () => {
             const result = await Native.getPluginList();
@@ -113,6 +119,9 @@ export default function PluginList({
             return p;
         });
         setPlugins(updatedPlugins);
+        // Check if any plugins still need updates
+        const stillNeedsUpdates = updatedPlugins.some(p => p.needsUpdate);
+        onUpdateCheck?.(stillNeedsUpdates, false);
     };
 
     return (
@@ -123,6 +132,7 @@ export default function PluginList({
                         key={plugin.name}
                         plugin={plugin as PartialOrNot}
                         onUpdate={handleUpdate}
+                        resetUpdateStates={resetUpdateStates}
                     />
                 ))}
             </Grid>

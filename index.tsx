@@ -23,7 +23,7 @@ import { Devs } from "@utils/constants";
 import definePlugin, { StartAt } from "@utils/types";
 import SettingsPlugin from "plugins/_core/settings";
 
-import { UnofficialPluginsSection } from "./components/UnofficialPluginsSection";
+import UnofficialPluginsSection from "./components/UnofficialPluginsSection";
 
 export default definePlugin({
     name: "UnofficialPluginInstaller",

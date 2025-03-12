@@ -6,9 +6,8 @@
 
 import { DataStore } from "@api/index";
 import { SettingsTab } from "@components/VencordSettings/shared";
-import { Margins } from "@utils/margins";
 import { PluginNative } from "@utils/types";
-import { Alerts, Button, Forms, Toasts, useEffect, useState } from "@webpack/common";
+import { Alerts, useEffect, useState } from "@webpack/common";
 
 import Plugins from "~plugins";
 
@@ -23,14 +22,27 @@ const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNa
 let alertShown = false;
 let acknowledged = false;
 
-export function UnofficialPluginsSection() {
-    const [isInitialising, setIsInitialising] = useState(false);
-    const [initialised, setInitialised] = useState(false);
-    const [currentState, setCurrentState] = useState("");
-    const [partialPlugins, setPartialPlugins] = useState<PartialPlugin[]>([]);
-    const [hasUpdates, setHasUpdates] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
+export default function UnofficialPluginsSection() {
+    const [loading, setLoading] = useState(false);
     const [loadingText, setLoadingText] = useState<string>();
+    const [hasUpdates, setHasUpdates] = useState(false);
+    const [isChecking, setIsChecking] = useState(false);
+    const [plugins, setPlugins] = useState<PartialPlugin[]>([]);
+
+    const handleLoadingChange = (isLoading: boolean, text?: string) => {
+        setLoading(isLoading);
+        setLoadingText(text);
+    };
+
+    const handleUpdateCheck = (hasUpdates: boolean, isChecking?: boolean) => {
+        setHasUpdates(hasUpdates);
+        if (isChecking !== undefined) setIsChecking(isChecking);
+    };
+
+    const handleUpdateAll = () => {
+        setHasUpdates(false);
+        setIsChecking(false);
+    };
 
     const onModalConfirm = async () => {
         acknowledged = true;
@@ -59,25 +71,19 @@ export function UnofficialPluginsSection() {
                 alertShown = true;
             }
 
-            setInitialised(await Native.isRepoDownloaded());
-
-            if (await Native.isWorking()) {
-                setInitialised(false);
-            }
-
             const partialPluginsResult = await Native.getPartialPlugins();
 
             if (partialPluginsResult.success) {
                 const filteredPlugins = (partialPluginsResult.data ?? []).filter(
                     plugin => !Object.keys(Plugins).includes(plugin.name)
                 );
-                setPartialPlugins(filteredPlugins);
+                setPlugins(filteredPlugins);
             }
         })();
     }, []);
 
     const onInitialiseClick = async () => {
-        setIsInitialising(true);
+        setLoading(true);
 
         const errorCode = await Native.initialiseRepo();
 
@@ -113,104 +119,36 @@ export function UnofficialPluginsSection() {
             return;
         }
 
-        setPartialPlugins([{
+        setPlugins([{
             name: "Unofficial Plugin Installer",
             source: "link",
             repoLink: "https://github.com/surgedevs/UnofficialPluginInstaller",
             folderName: "UnofficialPluginInstaller"
         }]);
 
-        await DataStore.set(PLUGINS_STORE_KEY, partialPlugins);
-        setInitialised(true);
+        await DataStore.set(PLUGINS_STORE_KEY, plugins);
     };
 
-    const onInstall = (partialPlugin: PartialPlugin) => {
-        setPartialPlugins([...partialPlugins, partialPlugin]);
-    };
-
-    const handlePluginUpdate = (hasAvailableUpdates: boolean, isChecking?: boolean) => {
-        setHasUpdates(hasAvailableUpdates);
-        if (isChecking !== undefined) {
-            setIsLoading(isChecking);
-            setLoadingText(isChecking ? "Checking for updates..." : undefined);
-        }
-    };
-
-    const handleRefreshPlugins = async () => {
-        setHasUpdates(false);
-        setIsLoading(true);
-        setLoadingText("Refreshing plugins...");
-
-        // Force a refresh of the plugin list
-        const result = await Native.getPluginList();
-        if (result.success) {
-            setPartialPlugins(prevPlugins => [...prevPlugins]); // Trigger re-render
-            setIsLoading(false);
-            setLoadingText(undefined);
-        } else {
-            setIsLoading(false);
-            setLoadingText(undefined);
-            Toasts.show({
-                message: "Failed to refresh plugins",
-                type: Toasts.Type.FAILURE,
-                id: "vc-up-refresh-failed"
-            });
-        }
+    const handleInstall = (partialPlugin: PartialPlugin) => {
+        setPlugins([...plugins, partialPlugin]);
     };
 
     return (
         <SettingsTab title="Unofficial Plugins">
             <div style={{ position: "relative" }}>
-                {(isLoading || isInitialising) && <LoadingOverlay text={loadingText || currentState} />}
-                {initialised ? <>
-                    <Header
-                        onInstall={onInstall}
-                        hasUpdates={hasUpdates}
-                        onLoadingChange={(loading, text) => {
-                            setIsLoading(loading);
-                            setLoadingText(text);
-                        }}
-                        onRefreshPlugins={handleRefreshPlugins}
-                    />
-                    <PluginList
-                        key={isLoading ? "loading" : "loaded"}
-                        partialPlugins={partialPlugins}
-                        onUpdateCheck={handlePluginUpdate}
-                        onLoadingChange={(loading, text) => {
-                            setIsLoading(loading);
-                            setLoadingText(text);
-                        }}
-                    />
-                </> : <>
-                    <div className="vc-up-container">
-                        <Forms.FormTitle>
-                            Uninitialised!
-                        </Forms.FormTitle>
+                <Header
+                    onInstall={handleInstall}
+                    hasUpdates={hasUpdates}
+                    onLoadingChange={handleLoadingChange}
+                    onUpdateAll={handleUpdateAll}
+                />
 
-                        <Forms.FormText>
-                            The Unofficial Plugin Loader is not yet initliased, click the button below to start.<br />
-                            Note that this will install a bunch of extra files on your computer.
-
-                            <Forms.FormText type={Forms.FormText.Types.ERROR} className={Margins.top16}>
-                                Requires Git and PNPM installed.<br />
-                                Git for windows: https://git-scm.com/download/win
-                                PNPM: https://pnpm.io/installation
-                            </Forms.FormText>
-
-                            <Button
-                                onClick={onInitialiseClick}
-                                disabled={isInitialising}
-                                size={Button.Sizes.LARGE}
-                                className={Margins.top16}
-                                color={Button.Colors.RED}
-                            >Initialise</Button>
-
-                            <Forms.FormText type="description">
-                                {currentState}
-                            </Forms.FormText>
-                        </Forms.FormText>
-                    </div>
-                </>}
+                <PluginList
+                    partialPlugins={plugins}
+                    onUpdateCheck={handleUpdateCheck}
+                    onLoadingChange={handleLoadingChange}
+                />
+                {loading && <LoadingOverlay text={loadingText} />}
             </div>
         </SettingsTab>
     );
