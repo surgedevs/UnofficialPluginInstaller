@@ -14,7 +14,6 @@ import { Alerts, Button, Forms, showToast, Text, TextInput, Toasts, useState } f
 
 import { PartialPlugin, PLUGINS_STORE_KEY, StoredPlugin } from "../shared";
 import { BuildConfirmationModal } from "./BuildConfirmationModal";
-import { LoadingOverlay } from "./LoadingOverlay";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 
@@ -217,7 +216,6 @@ export default function Header({
     };
 
     return <div className={"vc-up-container " + Margins.bottom16} style={{ position: "relative" }}>
-        {isWorking && <LoadingOverlay text={loadingText} />}
         <Forms.FormTitle>
             Unofficial Plugin Management
         </Forms.FormTitle>
