@@ -77,7 +77,7 @@ const getFSPath = (): string => {
     return path.join(appDataPath, "Vencord", "UnofficialPluginDownloader");
 };
 
-const getSourceFolder = (): string => path.join(getFSPath(), "Vencord");
+export const getSourceFolder = (): string => path.join(getFSPath(), "Vencord");
 
 const createPluginDownloaderFolder = (): void => {
     const path = getFSPath();
@@ -168,6 +168,11 @@ export async function build(): Promise<NativeResult<null>> {
 
 export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ needsUpdate: boolean; currentHash?: string; remoteHash?: string; }>> {
     const pluginPath = path.join(getSourceFolder(), "src/userplugins", pluginName);
+
+    console.log(`FS PATH: ${getFSPath()}`);
+    console.log(`SOURCE FOLDER: ${getSourceFolder()}`);
+    console.log(`PLUGIN PATH: ${pluginPath}`);
+
     if (!fs.existsSync(pluginPath)) {
         return { success: false, error: { object: null, message: "Plugin not found!" } };
     }
@@ -181,9 +186,11 @@ export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginNa
         return { success: false, error: { object: null, message: "Failed to get commit hashes!" } };
     }
 
+    const needsUpdate = currentHash !== remoteHash;
+
     return {
         success: true,
-        data: { needsUpdate: currentHash !== remoteHash, currentHash, remoteHash }
+        data: { needsUpdate, currentHash, remoteHash }
     };
 }
 
@@ -352,7 +359,7 @@ export async function getPluginList(): Promise<NativeResult<{ pluginName: string
         success: true,
         data: plugins.map(plugin => ({
             pluginName: getPluginNameFromPath(path.join(userPluginsFolder, plugin)) ?? plugin,
-            folderName: plugin
+            folderName: path.basename(plugin)
         }))
     };
 }
@@ -376,15 +383,39 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
 
 export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<null>> {
     try {
-        await execAsync(`cd ${getSourceFolder()} && pnpm run inject -- --install --branch ${branch}`, {
+        console.log(`Starting injection process for branch: ${branch}`);
+        const sourceFolder = getSourceFolder();
+        console.log(`Source folder: ${sourceFolder}`);
+
+        const command = `cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`;
+        console.log(`Executing command: ${command}`);
+
+        const result = await execAsync(command, {
             stdio: "inherit",
             env: {
                 ...process.env,
-                VENCORD_USER_DATA_DIR: getSourceFolder(),
             }
         });
+
+        if (result.error) {
+            console.error("Injection failed:", result.error);
+            return {
+                success: false,
+                error: {
+                    object: result.error,
+                    message: "Failed to inject!",
+                    stdout: result.stdout,
+                    stderr: result.stderr
+                }
+            };
+        }
+
+        console.log(result);
+
+        console.log("Injection completed successfully");
         return { success: true, data: null };
     } catch (error: any) {
+        console.error("Injection process failed:", error);
         return {
             success: false,
             error: {

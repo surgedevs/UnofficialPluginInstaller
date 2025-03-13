@@ -32,10 +32,7 @@ interface InstallResult {
     };
 }
 
-const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")> & {
-    getSourceFolder: () => Promise<string>;
-};
-
+const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 export default function Header({
     onInstall,
     hasUpdates,

@@ -47,7 +47,10 @@ export default function PluginList({
             const updatedPlugins = await Promise.all(pluginList.map(async plugin => {
                 if (plugin.source !== "link") return plugin;
 
+                console.log("Checking updates for", plugin);
+
                 const result = await Native.checkPluginUpdates(plugin.folderName);
+                console.log(result);
                 if (!result.success) {
                     console.error(`Failed to check updates for ${plugin.name}:`, result.error);
                     return plugin;
@@ -80,6 +83,7 @@ export default function PluginList({
                 setError(null);
 
                 const result = await Native.getPluginList();
+                console.log("girlcockx", result);
                 if (!result.success) {
                     throw new Error(result.error?.message || "Failed to get plugin list");
                 }
@@ -90,15 +94,20 @@ export default function PluginList({
                     (result.data ?? []).map(({ pluginName, folderName }) => [pluginName, folderName])
                 );
 
+                console.log("folderMap", folderMap);
+
                 const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || [];
                 const pluginMetaMap = Object.fromEntries(
                     storedPlugins.map(plugin => [plugin.name, plugin])
                 );
 
+                console.log("pluginMeta", PluginMeta);
+                console.log("pluginMetaMap", pluginMetaMap);
+
                 const mapPlugin = (p: any, isPartial = false): Plugin => {
                     const folderName = isPartial ? p.folderName : (
                         p.name === "UnofficialPluginInstaller" ? folderMap[p.name] :
-                            PluginMeta[p.name]?.userPlugin ? PluginMeta[p.name].folderName :
+                            PluginMeta[p.name]?.userPlugin ? PluginMeta[p.name].folderName.replace("\\", "/").split("/").pop() :
                                 folderMap[p.name]
                     );
 
@@ -118,9 +127,13 @@ export default function PluginList({
                     .filter(p => p.folderName)
                     .map(p => mapPlugin(p, true));
 
+                console.log("partialPluginsMapped", partialPluginsMapped);
+
                 const fullPluginsMapped = Object.values(Plugins)
                     .filter(p => PluginMeta[p.name]?.userPlugin || folderMap[p.name])
                     .map(p => mapPlugin(p));
+
+                console.log("fullPluginsMapped", fullPluginsMapped);
 
                 const allPlugins = [...partialPluginsMapped, ...fullPluginsMapped];
 
