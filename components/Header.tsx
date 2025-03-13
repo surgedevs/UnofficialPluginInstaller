@@ -12,10 +12,29 @@ import { showItemInFolder } from "@utils/native";
 import { PluginNative } from "@utils/types";
 import { Alerts, Button, Forms, showToast, Text, TextInput, Toasts, useState } from "@webpack/common";
 
-import { PartialPlugin, PLUGINS_STORE_KEY, StoredPlugin } from "../shared";
+import { PartialPlugin, PLUGINS_STORE_KEY } from "../shared";
 import { BuildConfirmationModal } from "./BuildConfirmationModal";
 
-const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
+interface InstallResult {
+    success: boolean;
+    data?: {
+        name: string | null;
+        folderName: string;
+        source: string;
+        commitHash?: string;
+        updated?: any[];
+    };
+    error?: {
+        message?: string;
+        stderr?: string;
+        stdout?: string;
+        object?: any;
+    };
+}
+
+const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")> & {
+    getSourceFolder: () => Promise<string>;
+};
 
 export default function Header({
     onInstall,
@@ -36,6 +55,21 @@ export default function Header({
         onLoadingChange(loading, text);
     };
 
+    const handleInstallSuccess = async (result: InstallResult, source: "link" | "directory", repoLink?: string) => {
+        const plugin = {
+            name: result.data?.name ?? "Unknown",
+            folderName: result.data?.folderName ?? "Unknown",
+            source,
+            ...(repoLink && { repoLink })
+        };
+
+        const plugins = await DataStore.get(PLUGINS_STORE_KEY) || [];
+        plugins.push(plugin);
+        await DataStore.set(PLUGINS_STORE_KEY, plugins);
+
+        onInstall(plugin);
+    };
+
     const onLinkSubmit = async () => {
         setLoading(true, "Installing plugin...");
         const result = await Native.installFromRepoLink(linkInput);
@@ -47,24 +81,8 @@ export default function Header({
                 type: Toasts.Type.SUCCESS,
             });
 
-            const plugins = await DataStore.get(PLUGINS_STORE_KEY) || {};
-
-            plugins.push({
-                name: result.data.name ?? "Unknown",
-                folderName: result.data.folderName ?? "Unknown",
-                source: "link",
-                repoLink: linkInput
-            });
-
-            await DataStore.set(PLUGINS_STORE_KEY, plugins);
-
+            await handleInstallSuccess(result, "link", linkInput);
             setLoading(false);
-            onInstall({
-                name: result.data.name ?? "Unknown",
-                folderName: result.data.folderName ?? "Unknown",
-                source: "link",
-                repoLink: linkInput
-            });
             return;
         }
 
@@ -146,17 +164,15 @@ export default function Header({
             setLoading(false);
         };
 
-        const alert = {
+        Alerts.show({
             title: "Confirm Build & Inject",
             body: <BuildConfirmationModal onConfirm={handleConfirm} />,
             className: "vc-up-alert"
-        };
-
-        Alerts.show(alert);
+        });
     };
 
     const onClickUpdateAll = async () => {
-        const alert = {
+        Alerts.show({
             title: "Update All Plugins",
             body: "Are you sure you want to update all plugins? You will need to Build & Inject after the update.",
             confirmText: "Update",
@@ -165,16 +181,14 @@ export default function Header({
                 setLoading(true, "Updating all plugins...");
                 const result = await Native.updateAllPlugins();
                 if (result.success) {
-                    showToast(`Updated ${result.data.updated.length} plugins. Build & Inject to apply changes.`, "success");
+                    showToast(`Updated ${result.data?.updated?.length ?? 0} plugins. Build & Inject to apply changes.`, "success");
                     onUpdateAll?.();
                 } else {
                     showToast("Failed to update plugins.", "failure");
                 }
                 setLoading(false);
             }
-        };
-
-        Alerts.show(alert);
+        });
     };
 
     const onClickInstallFromDirectory = async () => {
@@ -188,17 +202,7 @@ export default function Header({
                 type: Toasts.Type.SUCCESS,
             });
 
-            const plugin = {
-                name: result.data.name ?? "Unknown",
-                source: "directory" as const,
-                folderName: result.data.folderName ?? "Unknown"
-            };
-            const plugins: StoredPlugin[] = await DataStore.get(PLUGINS_STORE_KEY) || [];
-
-            plugins.push(plugin);
-            await DataStore.set(PLUGINS_STORE_KEY, plugins);
-
-            onInstall(plugin);
+            await handleInstallSuccess(result, "directory");
         } else {
             if (result.error?.message === "Plugin already exists!") {
                 showToast("Plugin already exists!", "failure");
@@ -218,34 +222,36 @@ export default function Header({
         setLoading(false);
     };
 
-    return <div className={"vc-up-container " + Margins.bottom16} style={{ position: "relative" }}>
-        <Forms.FormTitle>
-            Unofficial Plugin Management
-        </Forms.FormTitle>
+    return (
+        <div className={"vc-up-container " + Margins.bottom16} style={{ position: "relative" }}>
+            <Forms.FormTitle>
+                Unofficial Plugin Management
+            </Forms.FormTitle>
 
-        <Forms.FormText>
-            Install plugins from a Github repository link below
-        </Forms.FormText>
+            <Forms.FormText>
+                Install plugins from a Github repository link below
+            </Forms.FormText>
 
-        <Flex flexDirection="row" className={Margins.top16}>
-            <TextInput
-                className="vc-up-full-width"
-                placeholder="Insert Repository Link Here"
-                value={linkInput}
-                onChange={setLinkInput}
-            />
-            <Button disabled={isWorking} onClick={onLinkSubmit}>Install</Button>
-        </Flex>
-
-        <div className={"vc-up-container-inner " + Margins.top20}>
-            <Forms.FormTitle>Actions</Forms.FormTitle>
-
-            <Flex flexDirection="row" className={Margins.top16} style={{ justifyContent: "space-between" }}>
-                <Button disabled={isWorking} onClick={onClickInstallFromDirectory}>Install From Directory</Button>
-                <Button disabled={isWorking} onClick={onClickOpenSource}>Open Source Folder</Button>
-                <Button disabled={isWorking || !hasUpdates} onClick={onClickUpdateAll}>Update All</Button>
-                <Button disabled={isWorking} color={Button.Colors.RED} onClick={onClickBuildAndInject}>Build & Inject</Button>
+            <Flex flexDirection="row" className={Margins.top16}>
+                <TextInput
+                    className="vc-up-full-width"
+                    placeholder="Insert Repository Link Here"
+                    value={linkInput}
+                    onChange={setLinkInput}
+                />
+                <Button disabled={isWorking} onClick={onLinkSubmit}>Install</Button>
             </Flex>
+
+            <div className={"vc-up-container-inner " + Margins.top20}>
+                <Forms.FormTitle>Actions</Forms.FormTitle>
+
+                <Flex flexDirection="row" className={Margins.top16} style={{ justifyContent: "space-between" }}>
+                    <Button disabled={isWorking} onClick={onClickInstallFromDirectory}>Install From Directory</Button>
+                    <Button disabled={isWorking} onClick={onClickOpenSource}>Open Source Folder</Button>
+                    <Button disabled={isWorking || !hasUpdates} onClick={onClickUpdateAll}>Update All</Button>
+                    <Button disabled={isWorking} color={Button.Colors.RED} onClick={onClickBuildAndInject}>Build & Inject</Button>
+                </Flex>
+            </div>
         </div>
-    </div >;
+    );
 }

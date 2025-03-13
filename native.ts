@@ -12,409 +12,342 @@ import * as path from "path";
 
 import { ErrorCodes, PartialPlugin } from "./shared";
 
-interface FailableWithInformation {
-    code: ErrorCodes;
-    information?: string;
-}
-
-interface ExecInformation {
+interface ExecResult {
     error: ExecException | null;
     stdout?: string;
     stderr?: string;
 }
 
-interface NativeResultSuccessState<T> {
-    success: true,
-    data: T,
-}
-
-interface NativeResultFailState {
-    success: false,
+interface NativeResult<T> {
+    success: boolean;
+    data?: T;
     error?: {
-        object: any,
-        message: string,
-        stdout?: string,
-        stderr?: string,
+        object: any;
+        message: string;
+        stdout?: string;
+        stderr?: string;
     };
 }
 
-type NativeResult<T> = NativeResultFailState | NativeResultSuccessState<T>;
+const INDEX_FILES = ["index.tsx", "index.jsx", "index.js", "index.ts"] as const;
+let workingState = false;
 
-let working = false;
-
-function execAsync(command, additionalOptions = {}): Promise<ExecInformation> {
-    return new Promise((res, rej) => {
-        exec(command, additionalOptions, (error, stdout, stderr) => {
-            if (error) {
-                rej({
-                    error,
-                    stdout,
-                    stderr
-                });
-            } else {
-                res({
-                    error,
-                    stdout,
-                    stderr
-                });
-            }
+const execAsync = (command: string, options = {}): Promise<ExecResult> =>
+    new Promise((resolve, reject) => {
+        exec(command, options, (error, stdout, stderr) => {
+            if (error) reject({ error, stdout, stderr });
+            else resolve({ error, stdout, stderr });
         });
     });
-}
 
-function getPluginNameFromPath(pluginPath: string): string | null {
-    const indexFiles = ["index.tsx", "index.jsx", "index.js", "index.ts"];
-
-    const indexFile = indexFiles.find(file => fs.existsSync(path.join(pluginPath, file)));
+const getPluginNameFromPath = (pluginPath: string): string | null => {
+    const indexFile = INDEX_FILES.find(file => fs.existsSync(path.join(pluginPath, file)));
     if (!indexFile) return null;
 
     try {
-        const fileContent = fs.readFileSync(path.join(pluginPath, indexFile), "utf8");
-        const nameMatch = fileContent.match(/name:\s*["']([^"']+)["']/);
-        if (nameMatch) return nameMatch[1];
+        const content = fs.readFileSync(path.join(pluginPath, indexFile), "utf8");
+        const match = content.match(/name:\s*["']([^"']+)["']/);
+        return match?.[1] ?? null;
     } catch {
-        // Ignore errors reading file
+        return null;
     }
+};
 
-    return null;
-}
+const isValidRepoLink = (repoLink: string): boolean => {
+    const validPatterns = [
+        /\.git$/,
+        /^https:\/\/github\.com\//,
+        /^git@github\.com:/,
+        /^https:\/\/gitlab\.com\//,
+        /^git@gitlab\.com:/,
+        /^https:\/\/bitbucket\.org\//,
+        /^git@bitbucket\.org:/,
+        /^https?:\/\/.*\.git$/,
+        /^git@.*:.+\/.+$/
+    ];
+    return validPatterns.some(pattern => pattern.test(repoLink));
+};
 
-function isValidRepoLink(repoLink: string): boolean {
-    return repoLink.endsWith(".git") ||
-        repoLink.startsWith("https://github.com/") ||
-        repoLink.startsWith("git@github.com:") ||
-        repoLink.startsWith("https://gitlab.com/") ||
-        repoLink.startsWith("git@gitlab.com:") ||
-        repoLink.startsWith("https://bitbucket.org/") ||
-        repoLink.startsWith("git@bitbucket.org:") ||
-        /^https?:\/\/.*\.git$/.test(repoLink) ||
-        /^git@.*:.+\/.+$/.test(repoLink);
-}
-
-function createPluginDownloaderFolderIfNotExists(): void {
-    const pluginDownloaderPath = getFSPath();
-
-    if (!fs.existsSync(pluginDownloaderPath)) {
-        fs.mkdirSync(pluginDownloaderPath, { recursive: true });
-    }
-}
-
-export function getFSPath(): string {
+const getFSPath = (): string => {
     const appDataPath = process.env.APPDATA || (
         os.platform() === "darwin"
             ? path.join(os.homedir(), "Library", "Application Support")
             : path.join(os.homedir(), ".config")
     );
-    const vencordPath = path.join(appDataPath, "Vencord");
+    return path.join(appDataPath, "Vencord", "UnofficialPluginDownloader");
+};
 
-    return path.join(vencordPath, "UnofficialPluginDownloader");
-}
+const getSourceFolder = (): string => path.join(getFSPath(), "Vencord");
 
-export function getSourceFolder(): string {
-    return path.join(getFSPath(), "Vencord");
-}
-
-export async function initialiseRepo(): Promise<FailableWithInformation> {
-    working = true;
-
-    const gitCheck = "git --version && pnpm --version";
-    const gitSuccess = await execAsync(gitCheck).catch(err => err);
-
-    if (gitSuccess.error) {
-        return {
-            code: ErrorCodes.GIT_MISSING,
-            information: `stdout: ${gitSuccess.stdout}; stderr: ${gitSuccess.stderr}`
-        };
+const createPluginDownloaderFolder = (): void => {
+    const path = getFSPath();
+    if (!fs.existsSync(path)) {
+        fs.mkdirSync(path, { recursive: true });
     }
+};
 
-    createPluginDownloaderFolderIfNotExists();
-    const cloneCommand = `cd "${getFSPath()}" && git clone https://github.com/Vendicated/Vencord.git`;
-    const cloneSuccess = await execAsync(cloneCommand).catch(err => err);
-
-    if (cloneSuccess.error) {
-        return {
-            code: ErrorCodes.GIT_MISSING,
-            information: `stdout: ${cloneSuccess.stdout}; stderr: ${cloneSuccess.stderr}`
-        };
-    }
-
-    // Patch runInstaller.mjs to allow us to pass cli args ;(
-    const installerPath = path.join(getSourceFolder(), "scripts", "runInstaller.mjs");
-    try {
-        let content = fs.readFileSync(installerPath, "utf8");
-        content = content.replace(
-            /execFileSync\(installerBin,\s*{/g,
-            "execFileSync(installerBin, process.argv.slice(3), {"
-        );
-        fs.writeFileSync(installerPath, content);
-    } catch (err) {
-        return {
-            code: ErrorCodes.FAILED_PACKAGE_INSTALL,
-            information: `Failed to patch runInstaller.mjs: ${err}`
-        };
-    }
-
-    const packageCommand = `cd "${getSourceFolder()}" && pnpm i --no-frozen-lockfile`;
-    const packageSuccess = await execAsync(packageCommand).catch(err => err);
-
-    if (packageSuccess.error) {
-        return {
-            code: ErrorCodes.FAILED_PACKAGE_INSTALL,
-            information: `stdout: ${packageSuccess.stdout}; stderr: ${packageSuccess.stderr}`
-        };
-    }
-
-    if (!fs.existsSync(path.join(getSourceFolder(), "src/userplugins"))) {
-        fs.mkdirSync(path.join(getSourceFolder(), "src/userplugins"), { recursive: true });
-    }
-
-    const pluginCloneCommand = `cd "${getSourceFolder()}/src/userplugins" && git clone https://github.com/surgedevs/UnofficialPluginInstaller.git`;
-    const pluginCloneSuccess = await execAsync(pluginCloneCommand).catch(err => err);
-
-    if (pluginCloneSuccess.error) {
-        return {
-            code: ErrorCodes.FAILED_PACKAGE_INSTALL,
-            information: `stdout: ${pluginCloneSuccess.stdout}; stderr: ${pluginCloneSuccess.stderr}`
-        };
-    }
-
-    working = false;
-
-    return { code: ErrorCodes.SUCCESS, information: `${gitSuccess.stdout}${gitSuccess.stderr}${cloneSuccess.stdout}${cloneSuccess.stderr}` };
-}
-
-export function isRepoDownloaded(): boolean {
-    createPluginDownloaderFolderIfNotExists();
-
-    const repoPath = path.join(getFSPath(), "Vencord");
-
-    return fs.existsSync(repoPath);
-}
-
-export function isWorking(): boolean {
-    return working;
-}
-
-export async function build(): Promise<NativeResult<null>> {
-    const path = getSourceFolder();
-    const buildResult = await execAsync(`cd ${path} && pnpm run build`).catch(e => e);
-
-    if (buildResult.error) {
-        return {
-            success: false,
-            error: {
-                object: buildResult.error,
-                message: "Failed to build!",
-                stdout: buildResult.stdout,
-                stderr: buildResult.stderr
-            }
-        };
-    }
-
-    return { success: true, data: null };
-}
-
-async function getLatestCommitHash(repoPath: string): Promise<string | null> {
+const getLatestCommitHash = async (repoPath: string): Promise<string | null> => {
     try {
         const result = await execAsync(`cd "${repoPath}" && git rev-parse HEAD`);
         return result.stdout?.trim() ?? null;
     } catch {
         return null;
     }
-}
+};
 
-async function getRemoteCommitHash(repoPath: string): Promise<string | null> {
+const getRemoteCommitHash = async (repoPath: string): Promise<string | null> => {
     try {
         const result = await execAsync(`cd "${repoPath}" && git ls-remote origin HEAD`);
         return result.stdout?.split("\t")[0]?.trim() ?? null;
     } catch {
         return null;
     }
+};
+
+export async function initialiseRepo(): Promise<{ code: ErrorCodes; information?: string; }> {
+    workingState = true;
+
+    try {
+        await execAsync("git --version && pnpm --version");
+        createPluginDownloaderFolder();
+
+        await execAsync(`cd "${getFSPath()}" && git clone https://github.com/Vendicated/Vencord.git`);
+        const sourceFolder = getSourceFolder();
+
+        // Patch runInstaller.mjs
+        const installerPath = path.join(sourceFolder, "scripts", "runInstaller.mjs");
+        let content = fs.readFileSync(installerPath, "utf8");
+        content = content.replace(/execFileSync\(installerBin,\s*{/g, "execFileSync(installerBin, process.argv.slice(3), {");
+        fs.writeFileSync(installerPath, content);
+
+        await execAsync(`cd "${sourceFolder}" && pnpm i --no-frozen-lockfile`);
+
+        const userPluginsPath = path.join(sourceFolder, "src/userplugins");
+        if (!fs.existsSync(userPluginsPath)) {
+            fs.mkdirSync(userPluginsPath, { recursive: true });
+        }
+
+        await execAsync(`cd "${userPluginsPath}" && git clone https://github.com/surgedevs/UnofficialPluginInstaller.git`);
+
+        workingState = false;
+        return { code: ErrorCodes.SUCCESS };
+    } catch (error: any) {
+        workingState = false;
+        return {
+            code: error.message.includes("git") ? ErrorCodes.GIT_MISSING : ErrorCodes.FAILED_PACKAGE_INSTALL,
+            information: error.message
+        };
+    }
 }
 
-export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ needsUpdate: boolean, currentHash?: string, remoteHash?: string; }>> {
-    const sourceFolder = getSourceFolder();
-    const pluginPath = path.join(sourceFolder, "src/userplugins", pluginName);
+export function isRepoDownloaded(): boolean {
+    createPluginDownloaderFolder();
+    return fs.existsSync(getSourceFolder());
+}
 
-    if (!fs.existsSync(pluginPath)) {
+export function isWorking(): boolean {
+    return workingState;
+}
+
+export async function build(): Promise<NativeResult<null>> {
+    try {
+        await execAsync(`cd ${getSourceFolder()} && pnpm run build`);
+        return { success: true, data: null };
+    } catch (error: any) {
         return {
             success: false,
             error: {
-                object: null,
-                message: "Plugin not found!"
+                object: error,
+                message: "Failed to build!",
+                stdout: error.stdout,
+                stderr: error.stderr
             }
         };
     }
+}
 
-    const currentHash = await getLatestCommitHash(pluginPath);
-    const remoteHash = await getRemoteCommitHash(pluginPath);
+export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ needsUpdate: boolean; currentHash?: string; remoteHash?: string; }>> {
+    const pluginPath = path.join(getSourceFolder(), "src/userplugins", pluginName);
+    if (!fs.existsSync(pluginPath)) {
+        return { success: false, error: { object: null, message: "Plugin not found!" } };
+    }
+
+    const [currentHash, remoteHash] = await Promise.all([
+        getLatestCommitHash(pluginPath),
+        getRemoteCommitHash(pluginPath)
+    ]);
 
     if (!currentHash || !remoteHash) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Failed to get commit hashes!"
-            }
-        };
+        return { success: false, error: { object: null, message: "Failed to get commit hashes!" } };
     }
 
     return {
         success: true,
-        data: {
-            needsUpdate: currentHash !== remoteHash,
-            currentHash,
-            remoteHash
-        }
+        data: { needsUpdate: currentHash !== remoteHash, currentHash, remoteHash }
     };
 }
 
 export async function updatePlugin(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ commitHash: string; }>> {
-    const sourceFolder = getSourceFolder();
-    const pluginPath = path.join(sourceFolder, "src/userplugins", pluginName);
-
+    const pluginPath = path.join(getSourceFolder(), "src/userplugins", pluginName);
     if (!fs.existsSync(pluginPath)) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Plugin not found!"
-            }
-        };
+        return { success: false, error: { object: null, message: "Plugin not found!" } };
     }
 
-    const updateResult = await execAsync(`cd "${pluginPath}" && git pull`).catch(e => e);
-
-    if (updateResult.error) {
-        return {
-            success: false,
-            error: {
-                object: updateResult.error,
-                message: "Failed to update plugin!",
-                stdout: updateResult.stdout,
-                stderr: updateResult.stderr
-            }
-        };
-    }
-
-    const commitHash = await getLatestCommitHash(pluginPath);
-    if (!commitHash) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Failed to get commit hash!"
-            }
-        };
-    }
-
-    return {
-        success: true,
-        data: {
-            commitHash
+    try {
+        const pluginName = getPluginNameFromPath(pluginPath);
+        if (!pluginName) {
+            return { success: false, error: { object: null, message: "Invalid plugin structure!" } };
         }
-    };
+
+        const statusResult = await execAsync(`cd "${pluginPath}" && git status --porcelain`);
+        if (statusResult.stdout?.trim()) {
+            return { success: false, error: { object: null, message: "Plugin has uncommitted changes! Please commit or stash them first." } };
+        }
+
+        const defaultBranchResult = await execAsync(`cd "${pluginPath}" && git remote show origin | grep "HEAD branch:" | cut -d ":" -f 2 | tr -d " "`);
+        if (!defaultBranchResult.stdout?.trim()) {
+            return { success: false, error: { object: null, message: "Failed to determine default branch!" } };
+        }
+        const defaultBranch = defaultBranchResult.stdout.trim();
+
+        await execAsync(`cd "${pluginPath}" && git fetch origin && git checkout ${defaultBranch} && git pull origin ${defaultBranch}`);
+
+        const commitHash = await getLatestCommitHash(pluginPath);
+        if (!commitHash) {
+            return { success: false, error: { object: null, message: "Failed to verify update!" } };
+        }
+
+        const updatedPluginName = getPluginNameFromPath(pluginPath);
+        if (!updatedPluginName || updatedPluginName !== pluginName) {
+            return { success: false, error: { object: null, message: "Plugin structure invalid after update!" } };
+        }
+
+        return { success: true, data: { commitHash } };
+    } catch (error: any) {
+        return {
+            success: false,
+            error: {
+                object: error,
+                message: "Failed to update plugin!",
+                stdout: error.stdout,
+                stderr: error.stderr
+            }
+        };
+    }
 }
 
-export async function updateAllPlugins(): Promise<NativeResult<{ updated: string[]; }>> {
-    const sourceFolder = getSourceFolder();
-    const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
-    const updatedPlugins: string[] = [];
-
+export async function updateAllPlugins(): Promise<NativeResult<{ updated: string[]; failed: { name: string; error: string; }[]; }>> {
+    const userPluginsFolder = path.join(getSourceFolder(), "src/userplugins");
     if (!fs.existsSync(userPluginsFolder)) {
-        return {
-            success: true,
-            data: { updated: [] }
-        };
+        return { success: true, data: { updated: [], failed: [] } };
     }
 
     const plugins = fs.readdirSync(userPluginsFolder);
+    const results = await Promise.all(
+        plugins.map(async plugin => {
+            try {
+                const pluginPath = path.join(userPluginsFolder, plugin);
 
-    for (const plugin of plugins) {
-        const updateResult = await execAsync(`cd "${path.join(userPluginsFolder, plugin)}" && git pull`).catch(e => e);
-        if (!updateResult.error) {
-            updatedPlugins.push(plugin);
-        }
-    }
+                const pluginName = getPluginNameFromPath(pluginPath);
+                if (!pluginName) {
+                    return { success: false, name: plugin, error: "Invalid plugin structure" };
+                }
+
+                const statusResult = await execAsync(`cd "${pluginPath}" && git status --porcelain`);
+                if (statusResult.stdout?.trim()) {
+                    return { success: false, name: plugin, error: "Has uncommitted changes" };
+                }
+
+                const defaultBranchResult = await execAsync(`cd "${pluginPath}" && git remote show origin | grep "HEAD branch:" | cut -d ":" -f 2 | tr -d " "`);
+
+                if (!defaultBranchResult.stdout?.trim()) {
+                    return { success: false, name: plugin, error: "Failed to determine default branch" };
+                }
+                const defaultBranch = defaultBranchResult.stdout.trim();
+
+                await execAsync(`cd "${pluginPath}" && git fetch origin && git checkout ${defaultBranch} && git pull origin ${defaultBranch}`);
+
+                const commitHash = await getLatestCommitHash(pluginPath);
+                if (!commitHash) {
+                    return { success: false, name: plugin, error: "Failed to verify update" };
+                }
+
+                const updatedPluginName = getPluginNameFromPath(pluginPath);
+                if (!updatedPluginName || updatedPluginName !== pluginName) {
+                    return { success: false, name: plugin, error: "Invalid structure after update" };
+                }
+
+                return { success: true, name: plugin };
+            } catch (error: any) {
+                return {
+                    success: false,
+                    name: plugin,
+                    error: error.message || "Update failed"
+                };
+            }
+        })
+    );
+
+    const updated = results.filter(r => r.success).map(r => r.name);
+    const failed = results.filter(r => !r.success).map(r => ({ name: r.name, error: r.error }));
 
     return {
         success: true,
-        data: { updated: updatedPlugins }
+        data: { updated, failed }
     };
 }
 
 export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLink: string): Promise<NativeResult<{ name: string | null; folderName: string; source: string; commitHash?: string; }>> {
-    const sourceFolder = getSourceFolder();
-
     if (!isValidRepoLink(repoLink)) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Invalid repository link!"
-            }
-        };
+        return { success: false, error: { object: null, message: "Invalid repository link!" } };
     }
 
-    if (!fs.existsSync(path.join(sourceFolder, "src/userplugins"))) {
-        fs.mkdirSync(path.join(sourceFolder, "src/userplugins"), { recursive: true });
+    const sourceFolder = getSourceFolder();
+    const userPluginsPath = path.join(sourceFolder, "src/userplugins");
+    if (!fs.existsSync(userPluginsPath)) {
+        fs.mkdirSync(userPluginsPath, { recursive: true });
     }
 
     const repoName = repoLink.split("/").pop() ?? "";
-    const targetPath = path.join(sourceFolder, "src/userplugins", repoName);
-
+    const targetPath = path.join(userPluginsPath, repoName);
     if (fs.existsSync(targetPath)) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Plugin already exists!"
-            }
-        };
+        return { success: false, error: { object: null, message: "Plugin already exists!" } };
     }
 
-    const cloneCommand = `cd ${sourceFolder}/src/userplugins && git clone ${repoLink}`;
-    const cloneResult = await execAsync(cloneCommand).catch(e => e);
+    try {
+        await execAsync(`cd ${userPluginsPath} && git clone ${repoLink}`);
+        const pluginName = getPluginNameFromPath(targetPath);
+        const commitHash = await getLatestCommitHash(targetPath);
 
-    if (cloneResult.error) {
+        return {
+            success: true,
+            data: {
+                name: pluginName,
+                folderName: repoName,
+                source: "link",
+                commitHash: commitHash ?? undefined
+            }
+        };
+    } catch (error: any) {
         return {
             success: false,
             error: {
-                object: cloneResult.error,
+                object: error,
                 message: "Failed to clone repository!",
-                stdout: cloneResult.stdout,
-                stderr: cloneResult.stderr
+                stdout: error.stdout,
+                stderr: error.stderr
             }
         };
     }
-
-    const pluginName = getPluginNameFromPath(path.join(sourceFolder, "src/userplugins", repoLink.split("/").pop() ?? ""));
-    const commitHash = await getLatestCommitHash(path.join(sourceFolder, "src/userplugins", repoLink.split("/").pop() ?? ""));
-
-    return {
-        success: true,
-        data: {
-            name: pluginName,
-            folderName: repoName,
-            source: "link",
-            commitHash: commitHash ?? undefined
-        }
-    };
 }
 
 export async function getPluginList(): Promise<NativeResult<{ pluginName: string; folderName: string; }[]>> {
-    const sourceFolder = getSourceFolder();
-    const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
-
+    const userPluginsFolder = path.join(getSourceFolder(), "src/userplugins");
     if (!fs.existsSync(userPluginsFolder)) {
-        return {
-            success: true,
-            data: []
-        };
+        return { success: true, data: [] };
     }
 
     const plugins = fs.readdirSync(userPluginsFolder);
-
     return {
         success: true,
         data: plugins.map(plugin => ({
@@ -425,92 +358,59 @@ export async function getPluginList(): Promise<NativeResult<{ pluginName: string
 }
 
 export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>> {
-    const sourceFolder = getSourceFolder();
-    const partialPlugins: PartialPlugin[] = [];
-
-    const userPluginsFolder = path.join(sourceFolder, "src/userplugins");
-
+    const userPluginsFolder = path.join(getSourceFolder(), "src/userplugins");
     if (!fs.existsSync(userPluginsFolder)) {
-        return {
-            success: true,
-            data: []
-        };
+        return { success: true, data: [] };
     }
 
-    const userPlugins = fs.readdirSync(userPluginsFolder);
+    const plugins = fs.readdirSync(userPluginsFolder);
+    const partialPlugins = plugins
+        .map(plugin => {
+            const pluginName = getPluginNameFromPath(path.join(userPluginsFolder, plugin));
+            return pluginName ? { name: pluginName, folderName: plugin } : null;
+        })
+        .filter((p): p is PartialPlugin => p !== null);
 
-    for (const plugin of userPlugins) {
-        const pluginName = getPluginNameFromPath(path.join(userPluginsFolder, plugin));
-        if (pluginName) {
-            partialPlugins.push({
-                name: pluginName,
-                folderName: plugin,
-            });
-        }
-    }
-
-    return {
-        success: true,
-        data: partialPlugins
-    };
+    return { success: true, data: partialPlugins };
 }
 
 export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<null>> {
-    const sourceFolder = getSourceFolder();
-    const injectResult = await execAsync(`cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`, {
-        stdio: "inherit",
-        env: {
-            ...process.env,
-            VENCORD_USER_DATA_DIR: getSourceFolder(),
-        }
-    }).catch(e => e);
-
-    if (injectResult.error) {
+    try {
+        await execAsync(`cd ${getSourceFolder()} && pnpm run inject -- --install --branch ${branch}`, {
+            stdio: "inherit",
+            env: {
+                ...process.env,
+                VENCORD_USER_DATA_DIR: getSourceFolder(),
+            }
+        });
+        return { success: true, data: null };
+    } catch (error: any) {
         return {
             success: false,
             error: {
-                object: injectResult.error,
+                object: error,
                 message: "Failed to inject!",
-                stdout: injectResult.stdout,
-                stderr: injectResult.stderr
+                stdout: error.stdout,
+                stderr: error.stderr
             }
         };
     }
-
-    return { success: true, data: null };
 }
 
 export async function deletePlugin(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<null>> {
-    const sourceFolder = getSourceFolder();
-
-    if (!fs.existsSync(path.join(sourceFolder, "src/userplugins", pluginName))) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Plugin not found!"
-            }
-        };
+    const pluginPath = path.join(getSourceFolder(), "src/userplugins", pluginName);
+    if (!fs.existsSync(pluginPath)) {
+        return { success: false, error: { object: null, message: "Plugin not found!" } };
     }
 
-    fs.rmSync(path.join(sourceFolder, "src/userplugins", pluginName), { recursive: true, force: true });
-
+    fs.rmSync(pluginPath, { recursive: true, force: true });
     return { success: true, data: null };
 }
 
 export async function installFromDirectory(_ipcEvent: IpcMainInvokeEvent): Promise<NativeResult<{ name: string | null; folderName: string; source: string; }>> {
-    const result = await dialog.showOpenDialog({
-        properties: ["openDirectory"]
-    });
-
+    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
     if (result.canceled || result.filePaths.length === 0) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "No directory selected"
-            }
-        };
+        return { success: false, error: { object: null, message: "No directory selected" } };
     }
 
     const sourceDir = result.filePaths[0];
@@ -519,13 +419,7 @@ export async function installFromDirectory(_ipcEvent: IpcMainInvokeEvent): Promi
     const targetPath = path.join(sourceFolder, "src/userplugins", folderName);
 
     if (fs.existsSync(targetPath)) {
-        return {
-            success: false,
-            error: {
-                object: null,
-                message: "Plugin already exists!"
-            }
-        };
+        return { success: false, error: { object: null, message: "Plugin already exists!" } };
     }
 
     try {
@@ -535,7 +429,7 @@ export async function installFromDirectory(_ipcEvent: IpcMainInvokeEvent): Promi
             success: true,
             data: {
                 name: pluginName,
-                folderName: folderName,
+                folderName,
                 source: "directory"
             }
         };
