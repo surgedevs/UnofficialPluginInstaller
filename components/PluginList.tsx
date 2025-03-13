@@ -36,9 +36,13 @@ export default function PluginList({
     }>>([]);
 
     const updatePluginsAndNotify = (newPlugins: typeof plugins) => {
-        setPlugins(newPlugins);
-        const hasUpdates = newPlugins.some(p => p.needsUpdate);
-        onUpdateCheck?.(hasUpdates, false);
+        const currentPluginsStr = JSON.stringify(plugins);
+        const newPluginsStr = JSON.stringify(newPlugins);
+        if (currentPluginsStr !== newPluginsStr) {
+            setPlugins(newPlugins);
+            const hasUpdates = newPlugins.some(p => p.needsUpdate);
+            onUpdateCheck?.(hasUpdates, false);
+        }
     };
 
     const checkForUpdates = async (pluginList: typeof plugins) => {
@@ -62,38 +66,63 @@ export default function PluginList({
     };
 
     useEffect(() => {
+        let mounted = true;
+
         async function initializePlugins() {
             const result = await Native.getPluginList();
+
+            if (!mounted) return;
+
             const folderMap = result.success
                 ? Object.fromEntries(result.data?.map(({ pluginName, folderName }) => [pluginName, folderName]) ?? [])
                 : {};
 
             const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || [];
+
+            if (!mounted) return;
+
             const pluginMetaMap = Object.fromEntries(storedPlugins.map(plugin => [plugin.name, plugin]));
 
-            const mapPlugin = (p: any, isPartial = false) => ({
-                ...p,
-                folderName: folderMap[p.name],
-                source: pluginMetaMap[p.name]?.source,
-                repoLink: pluginMetaMap[p.name]?.repoLink,
-                partial: isPartial,
-                needsUpdate: false
-            });
+            const mapPlugin = (p: any, isPartial = false) => {
+                const folderName = isPartial ? p.folderName : (PluginMeta[p.name]?.userPlugin ? PluginMeta[p.name].folderName : folderMap[p.name]);
+                const mapped = {
+                    ...p,
+                    folderName,
+                    source: pluginMetaMap[p.name]?.source,
+                    repoLink: pluginMetaMap[p.name]?.repoLink,
+                    partial: isPartial,
+                    needsUpdate: false
+                };
+                return mapped;
+            };
 
-            const allPlugins = [
-                ...partialPlugins
-                    .filter(p => folderMap[p.name])
-                    .map(p => mapPlugin(p, true)),
-                ...Object.values(Plugins)
-                    .filter(p => PluginMeta[p.name]?.userPlugin && folderMap[p.name])
-                    .map(p => mapPlugin(p))
-            ];
+            if (!mounted) return;
 
-            setPlugins(allPlugins);
-            checkForUpdates(allPlugins);
+            const partialPluginsMapped = partialPlugins
+                .filter(p => p.folderName)
+                .map(p => mapPlugin(p, true));
+
+            const fullPluginsMapped = Object.values(Plugins)
+                .filter(p => PluginMeta[p.name]?.userPlugin || folderMap[p.name])
+                .map(p => mapPlugin(p));
+
+            const allPlugins = [...partialPluginsMapped, ...fullPluginsMapped];
+
+            if (!mounted) return;
+
+            const currentPluginsStr = JSON.stringify(plugins);
+            const newPluginsStr = JSON.stringify(allPlugins);
+            if (currentPluginsStr !== newPluginsStr) {
+                setPlugins(allPlugins);
+                checkForUpdates(allPlugins);
+            }
         }
 
         initializePlugins();
+
+        return () => {
+            mounted = false;
+        };
     }, [partialPlugins]);
 
     const handleUpdate = (pluginName: string) => {

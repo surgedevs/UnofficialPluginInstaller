@@ -44,8 +44,12 @@ export default function UnofficialPluginsSection() {
     };
 
     useEffect(() => {
+        let mounted = true;
+
         (async () => {
             acknowledged = await DataStore.get("vc-unofficialplugins-acknowledged") || false;
+
+            if (!mounted) return;
 
             if (!alertShown && !acknowledged) {
                 const alert = {
@@ -60,13 +64,18 @@ export default function UnofficialPluginsSection() {
             }
 
             const isDownloaded = await Native.isRepoDownloaded();
+
+            if (!mounted) return;
             setInitialised(isDownloaded);
 
             if (await Native.isWorking()) {
+                if (!mounted) return;
                 setInitialised(false);
             }
 
             const partialPluginsResult = await Native.getPartialPlugins();
+
+            if (!mounted) return;
 
             if (partialPluginsResult.success) {
                 const filteredPlugins = (partialPluginsResult.data ?? []).filter(
@@ -75,6 +84,10 @@ export default function UnofficialPluginsSection() {
                 setPartialPlugins(filteredPlugins);
             }
         })();
+
+        return () => {
+            mounted = false;
+        };
     }, []);
 
     const onInitialiseClick = async () => {
@@ -106,8 +119,6 @@ export default function UnofficialPluginsSection() {
                 };
             }
         }
-
-        console.log(errorCode.information);
 
         if (alert) {
             Alerts.show(alert);
@@ -210,6 +221,13 @@ export default function UnofficialPluginsSection() {
                                 Requires Git and PNPM installed.<br />
                                 Git for windows: https://git-scm.com/download/win
                                 PNPM: https://pnpm.io/installation
+                            </Forms.FormText>
+
+                            <Forms.FormText className={Margins.top16}>
+                                Install paths:
+                                Windows: %appdata%/Vencord/UnofficialPluginDownloader
+                                Linux: ~/.config/Vencord/UnofficialPluginDownloader
+                                MacOS: ~/Library/Application Support/Vencord/UnofficialPluginDownloader
                             </Forms.FormText>
 
                             <Button
