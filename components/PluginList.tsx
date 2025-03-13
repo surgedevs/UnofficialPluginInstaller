@@ -55,8 +55,8 @@ export default function PluginList({
 
                 return {
                     ...plugin,
-                    needsUpdate: result.data.needsUpdate,
-                    commitHash: result.data.currentHash
+                    needsUpdate: result.data?.needsUpdate ?? false,
+                    commitHash: result.data?.currentHash
                 };
             }));
 
@@ -87,7 +87,7 @@ export default function PluginList({
                 if (!mounted) return;
 
                 const folderMap = Object.fromEntries(
-                    result.data.map(({ pluginName, folderName }) => [pluginName, folderName])
+                    (result.data ?? []).map(({ pluginName, folderName }) => [pluginName, folderName])
                 );
 
                 const storedPlugins = await DataStore.get(PLUGINS_STORE_KEY) || [];
