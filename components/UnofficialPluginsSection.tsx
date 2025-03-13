@@ -20,118 +20,40 @@ import PluginList from "./PluginList";
 
 const Native = VencordNative.pluginHelpers.UnofficialPluginInstaller as PluginNative<typeof import("../native")>;
 
-let alertShown = false;
-let acknowledged = false;
+interface LoadingState {
+    isLoading: boolean;
+    text?: string;
+}
 
 export default function UnofficialPluginsSection() {
-    const [isInitialising, setIsInitialising] = useState(false);
-    const [initialised, setInitialised] = useState(false);
-    const [currentState, setCurrentState] = useState("");
-    const [partialPlugins, setPartialPlugins] = useState<PartialPlugin[]>([]);
+    const [isInitialised, setIsInitialised] = useState(false);
+    const [plugins, setPlugins] = useState<PartialPlugin[]>([]);
     const [hasUpdates, setHasUpdates] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [loadingText, setLoadingText] = useState<string>();
+    const [loading, setLoading] = useState<LoadingState>({ isLoading: false });
+    const [isAcknowledged, setIsAcknowledged] = useState(false);
 
-    const onModalConfirm = async () => {
-        acknowledged = true;
-
-        const alertButton: HTMLButtonElement | null = document.querySelector(
-            '.vc-up-alert [class*="primaryButton_"]'
-        );
-        alertButton?.click();
-
-        await DataStore.set("vc-unofficialplugins-acknowledged", true);
+    const updateLoadingState = (isLoading: boolean, text?: string) => {
+        setLoading({ isLoading, text });
     };
 
-    useEffect(() => {
-        let mounted = true;
+    const handleError = (title: string, body: string) => {
+        Alerts.show({ title, body });
+        updateLoadingState(false);
+    };
 
-        (async () => {
-            acknowledged = await DataStore.get("vc-unofficialplugins-acknowledged") || false;
-
-            if (!mounted) return;
-
-            if (!alertShown && !acknowledged) {
-                const alert = {
-                    title: "Attention!",
-                    body: <AcknowledgementModal onConfirm={onModalConfirm} />,
-                    className: "vc-up-alert",
-                    onCloseCallback: () => !acknowledged && Alerts.show(alert),
-                };
-
-                Alerts.show(alert);
-                alertShown = true;
-            }
-
-            const isDownloaded = await Native.isRepoDownloaded();
-
-            if (!mounted) return;
-            setInitialised(isDownloaded);
-
-            if (await Native.isWorking()) {
-                if (!mounted) return;
-                setInitialised(false);
-            }
-
-            const partialPluginsResult = await Native.getPartialPlugins();
-
-            if (!mounted) return;
-
-            if (partialPluginsResult.success) {
-                const filteredPlugins = (partialPluginsResult.data ?? []).filter(
-                    plugin => !Object.keys(Plugins).includes(plugin.name)
-                );
-                setPartialPlugins(filteredPlugins);
-            }
-        })();
-
-        return () => {
-            mounted = false;
-        };
-    }, []);
-
-    const onInitialiseClick = async () => {
-        setIsInitialising(true);
+    const handleInitialisation = async () => {
+        updateLoadingState(true, "Initializing...");
 
         const errorCode = await Native.initialiseRepo();
 
-        let alert: Parameters<typeof Alerts.show>[0] | null = null;
-
-        switch (errorCode.code) {
-            case ErrorCodes.GIT_MISSING: {
-                alert = {
-                    title: "Failed!",
-                    body: "You do not have git installed. Please install git before continuing."
-                };
-                break;
-            }
-            case ErrorCodes.COULD_NOT_PULL: {
-                alert = {
-                    title: "Failed!",
-                    body: "Could not pull the Vencord repository."
-                };
-                break;
-            }
-            case ErrorCodes.FAILED_PACKAGE_INSTALL: {
-                alert = {
-                    title: "Failed!",
-                    body: "Could not install required packages"
-                };
-            }
-        }
-
-        if (alert) {
-            Alerts.show(alert);
-            setIsInitialising(false);
-            return;
-        }
+        const errorMessages = {
+            [ErrorCodes.GIT_MISSING]: "You do not have git installed. Please install git before continuing.",
+            [ErrorCodes.COULD_NOT_PULL]: "Could not pull the Vencord repository.",
+            [ErrorCodes.FAILED_PACKAGE_INSTALL]: "Could not install required packages"
+        };
 
         if (errorCode.code !== 0) {
-            Alerts.show({
-                title: "Failed!",
-                body: "Failed to initialize repository."
-            });
-            setIsInitialising(false);
+            handleError("Failed!", errorMessages[errorCode.code] ?? "Failed to initialize repository.");
             return;
         }
 
@@ -142,108 +64,117 @@ export default function UnofficialPluginsSection() {
             folderName: "UnofficialPluginInstaller"
         }]);
 
-        setInitialised(true);
-        setIsInitialising(false);
+        setIsInitialised(true);
+        updateLoadingState(false);
     };
 
-    const onInstall = (partialPlugin: PartialPlugin) => {
-        setPartialPlugins([...partialPlugins, partialPlugin]);
-    };
+    const refreshPlugins = async () => {
+        updateLoadingState(true, "Refreshing plugins...");
 
-    const handlePluginUpdate = (hasAvailableUpdates: boolean, isChecking?: boolean) => {
-        setHasUpdates(hasAvailableUpdates);
-        if (isChecking !== undefined) {
-            setIsLoading(isChecking);
-            setLoadingText(isChecking ? "Checking for updates..." : undefined);
-        }
-    };
+        try {
+            const result = await Native.getPluginList();
+            if (!result.success) throw new Error();
 
-    const handleRefreshPlugins = async () => {
-        setHasUpdates(false);
-        setIsLoading(true);
-        setLoadingText("Refreshing plugins...");
-
-        const result = await Native.getPluginList();
-        if (result.success) {
-            const partialPluginsResult = await Native.getPartialPlugins();
-            if (partialPluginsResult.success) {
-                const filteredPlugins = (partialPluginsResult.data ?? []).filter(
-                    plugin => !Object.keys(Plugins).includes(plugin.name)
-                );
-                setPartialPlugins(filteredPlugins);
+            const pluginsResult = await Native.getPartialPlugins();
+            if (pluginsResult.success) {
+                const filteredPlugins = (pluginsResult.data ?? [])
+                    .filter(plugin => !Object.keys(Plugins).includes(plugin.name));
+                setPlugins(filteredPlugins);
             }
-            setIsLoading(false);
-            setLoadingText(undefined);
-        } else {
-            setIsLoading(false);
-            setLoadingText(undefined);
+        } catch {
             Toasts.show({
                 message: "Failed to refresh plugins",
                 type: Toasts.Type.FAILURE,
                 id: "vc-up-refresh-failed"
             });
         }
+
+        updateLoadingState(false);
     };
+
+    useEffect(() => {
+        let mounted = true;
+
+        const init = async () => {
+            const acknowledged = await DataStore.get("vc-unofficialplugins-acknowledged");
+            if (!mounted) return;
+
+            setIsAcknowledged(!!acknowledged);
+            if (!acknowledged) {
+                Alerts.show({
+                    title: "Attention!",
+                    body: <AcknowledgementModal onConfirm={async () => {
+                        setIsAcknowledged(true);
+                        await DataStore.set("vc-unofficialplugins-acknowledged", true);
+                    }} />,
+                    className: "vc-up-alert"
+                });
+            }
+
+            const isDownloaded = await Native.isRepoDownloaded();
+            if (!mounted) return;
+
+            setIsInitialised(isDownloaded && !(await Native.isWorking()));
+
+            const pluginsResult = await Native.getPartialPlugins();
+            if (!mounted || !pluginsResult.success) return;
+
+            setPlugins(pluginsResult.data?.filter(
+                plugin => !Object.keys(Plugins).includes(plugin.name)
+            ) ?? []);
+        };
+
+        init();
+        return () => { mounted = false; };
+    }, []);
+
+    if (!isInitialised) {
+        return (
+            <SettingsTab title="Unofficial Plugins">
+                <div className="vc-up-container">
+                    <Forms.FormTitle>Uninitialised!</Forms.FormTitle>
+                    <Forms.FormText>
+                        The Unofficial Plugin Loader is not yet initialized, click the button below to start.
+                        <Forms.FormText type={Forms.FormText.Types.ERROR} className={Margins.top16}>
+                            Requires Git and PNPM installed.<br />
+                            Git for windows: https://git-scm.com/download/win
+                            PNPM: https://pnpm.io/installation
+                        </Forms.FormText>
+                        <Button
+                            onClick={handleInitialisation}
+                            disabled={loading.isLoading}
+                            size={Button.Sizes.LARGE}
+                            className={Margins.top16}
+                            color={Button.Colors.RED}
+                        >
+                            Initialise
+                        </Button>
+                    </Forms.FormText>
+                </div>
+            </SettingsTab>
+        );
+    }
 
     return (
         <SettingsTab title="Unofficial Plugins">
             <div style={{ position: "relative" }}>
-                {(isLoading || isInitialising) && <LoadingOverlay text={loadingText || currentState} />}
-                {initialised ? <>
-                    <Header
-                        onInstall={onInstall}
-                        hasUpdates={hasUpdates}
-                        onLoadingChange={(loading, text) => {
-                            setIsLoading(loading);
-                            setLoadingText(text);
-                        }}
-                        onUpdateAll={handleRefreshPlugins}
-                    />
-                    <PluginList
-                        partialPlugins={partialPlugins}
-                        onUpdateCheck={handlePluginUpdate}
-                        onLoadingChange={(loading, text) => {
-                            setIsLoading(loading);
-                            setLoadingText(text);
-                        }}
-                    />
-                </> : <>
-                    <div className="vc-up-container">
-                        <Forms.FormTitle>
-                            Uninitialised!
-                        </Forms.FormTitle>
-
-                        <Forms.FormText>
-                            The Unofficial Plugin Loader is not yet initliased, click the button below to start.<br />
-                            Note that this will install a bunch of extra files on your computer.
-
-                            <Forms.FormText type={Forms.FormText.Types.ERROR} className={Margins.top16}>
-                                Requires Git and PNPM installed.<br />
-                                Git for windows: https://git-scm.com/download/win
-                                PNPM: https://pnpm.io/installation
-                            </Forms.FormText>
-
-                            <Forms.FormText className={Margins.top16}>
-                                Install paths:
-                                Windows: %appdata%/Vencord/UnofficialPluginDownloader
-                                Linux: ~/.config/Vencord/UnofficialPluginDownloader
-                                MacOS: ~/Library/Application Support/Vencord/UnofficialPluginDownloader
-                            </Forms.FormText>
-
-                            <Button
-                                onClick={onInitialiseClick}
-                                disabled={isInitialising}
-                                size={Button.Sizes.LARGE}
-                                className={Margins.top16}
-                                color={Button.Colors.RED}
-                            >Initialise</Button>
-
-                            <Forms.FormText type="description">
-                                {currentState}
-                            </Forms.FormText>
-                        </Forms.FormText>
-                    </div>
-                </>}
+                {loading.isLoading && <LoadingOverlay text={loading.text} />}
+                <Header
+                    onInstall={plugin => setPlugins([...plugins, plugin])}
+                    hasUpdates={hasUpdates}
+                    onLoadingChange={updateLoadingState}
+                    onUpdateAll={refreshPlugins}
+                />
+                <PluginList
+                    partialPlugins={plugins}
+                    onUpdateCheck={(hasAvailableUpdates, isChecking) => {
+                        setHasUpdates(hasAvailableUpdates);
+                        if (isChecking !== undefined) {
+                            updateLoadingState(isChecking, isChecking ? "Checking for updates..." : undefined);
+                        }
+                    }}
+                    onLoadingChange={updateLoadingState}
+                />
             </div>
         </SettingsTab>
     );
