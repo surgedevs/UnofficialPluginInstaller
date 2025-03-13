@@ -25,6 +25,9 @@ This is an _Unofficial_ Vencord Plugin that adds an interface to install and man
 > [!NOTE]
 > You are expected to have some amount of technical knowledge. We do not provide support for installing the plugin into Vencord, if you cannot figure this out the plugin is not for you.
 
+> [!CAUTION]
+> Linux installs over flatpak are not supported due to the sandbox messing with how the plugin works. If you can figure out how to run it, great! We will not support it though.
+
 ### Requirements
 
 - Git
