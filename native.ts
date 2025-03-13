@@ -169,10 +169,6 @@ export async function build(): Promise<NativeResult<null>> {
 export async function checkPluginUpdates(_ipcEvent: IpcMainInvokeEvent, pluginName: string): Promise<NativeResult<{ needsUpdate: boolean; currentHash?: string; remoteHash?: string; }>> {
     const pluginPath = path.join(getSourceFolder(), "src/userplugins", pluginName);
 
-    console.log(`FS PATH: ${getFSPath()}`);
-    console.log(`SOURCE FOLDER: ${getSourceFolder()}`);
-    console.log(`PLUGIN PATH: ${pluginPath}`);
-
     if (!fs.existsSync(pluginPath)) {
         return { success: false, error: { object: null, message: "Plugin not found!" } };
     }
@@ -383,12 +379,8 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
 
 export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<null>> {
     try {
-        console.log(`Starting injection process for branch: ${branch}`);
         const sourceFolder = getSourceFolder();
-        console.log(`Source folder: ${sourceFolder}`);
-
         const command = `cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`;
-        console.log(`Executing command: ${command}`);
 
         const result = await execAsync(command, {
             stdio: "inherit",
@@ -410,9 +402,6 @@ export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Pro
             };
         }
 
-        console.log(result);
-
-        console.log("Injection completed successfully");
         return { success: true, data: null };
     } catch (error: any) {
         console.error("Injection process failed:", error);
