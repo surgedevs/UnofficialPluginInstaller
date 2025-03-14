@@ -151,7 +151,7 @@ export function isWorking(): boolean {
 
 export async function build(): Promise<NativeResult<null>> {
     try {
-        await execAsync(`cd ${getSourceFolder()} && pnpm run build`);
+        await execAsync(`cd "${getSourceFolder()}" && pnpm run build`);
         return { success: true, data: null };
     } catch (error: any) {
         return {
@@ -318,7 +318,7 @@ export async function installFromRepoLink(_ipcEvent: IpcMainInvokeEvent, repoLin
     }
 
     try {
-        await execAsync(`cd ${userPluginsPath} && git clone ${repoLink}`);
+        await execAsync(`cd "${userPluginsPath}" && git clone ${repoLink}`);
         const pluginName = getPluginNameFromPath(targetPath);
         const commitHash = await getLatestCommitHash(targetPath);
 
@@ -380,7 +380,7 @@ export async function getPartialPlugins(): Promise<NativeResult<PartialPlugin[]>
 export async function inject(_ipcEvent: IpcMainInvokeEvent, branch: string): Promise<NativeResult<null>> {
     try {
         const sourceFolder = getSourceFolder();
-        const command = `cd ${sourceFolder} && pnpm run inject -- --install --branch ${branch}`;
+        const command = `cd "${sourceFolder}" && pnpm run inject -- --install --branch ${branch}`;
 
         const result = await execAsync(command, {
             stdio: "inherit",
