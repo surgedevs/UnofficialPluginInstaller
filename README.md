@@ -6,7 +6,7 @@
 > THIS PLUGIN IS NOT AFFILIATED WITH VENCORD AND YOU SHOULD NOT BE ASKING FOR SUPPORT FOR THIS PLUGIN IN THE VENCORD DISCORD SERVER.
 
 > [!WARNING]
-> This plugin is still in its early versions. Some stuff probably does not work correctly yet. Linux and MacOS compatibility is also not guranteed yet.
+> This plugin is still in its early versions. Some stuff probably does not work correctly yet. Full linux and MacOS compatibility is also not guranteed yet.
 
 # UnofficialPluginInstaller
 
