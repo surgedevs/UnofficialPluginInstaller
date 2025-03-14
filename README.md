@@ -68,3 +68,16 @@ After downloading the update you must Build & Inject again.
 ## Contributing
 
 Any and all contributions are welcome, from bug reports to merge requests. There are no real contribution requirements except for don't try to merge garbage code I guess.
+
+## Compatibility
+
+Tested on:
+- Windows 11
+- Ubuntu 22.04.4 through WSL
+- MacOS 15.3
+
+Differences:
+Linux/MacOS do not close Discord automatically after injection, Vencord Installer on MacOS doesn't have a CLI and trying to Inject takes you through the installer (making the plugin's branch select useless)
+
+Specifically not Supported:
+Linux flatpak - due to sandboxing
