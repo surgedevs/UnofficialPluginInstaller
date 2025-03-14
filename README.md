@@ -43,6 +43,8 @@ This is an _Unofficial_ Vencord Plugin that adds an interface to install and man
 - Run `pnpm run build`
 - Run `pnpm run inject` and complete the injection process
 
+A Vencord official guide can be found here: https://discord.com/channels/1015060230222131221/1257038407503446176
+
 ## Usage
 
 After installing the plugin and checking if its enabled inside of Vencords official Plugin menu (you potentially have to restart your Discord if it wasn't enabled), a new category at the bottom of the Vencord category inside the user settings should appear.
